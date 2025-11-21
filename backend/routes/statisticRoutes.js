@@ -1,7 +1,7 @@
 // routes/statisticRoutes.js
 const express = require('express');
 const router = express.Router();
-const statisticController = require('../controllers/StatisticController');
+const statisticController = require('../controllers/statisticController');
 const { authenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
 
 // Vai trò được phép xem thống kê/báo cáo
