@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 // ✅ Đăng ký các route con với tiền tố tương ứng=> đây là index.js trong routes
 router.use('/books', require('./bookRoutes'));
-router.use('/Payment', require('./PaymentRoutes'));
+router.use('/Payment', require('./paymentRoutes'));
 router.use('/borrow', require('./borrowRoutes'));
 router.use('/return', require('./returnRoutes'));
 
