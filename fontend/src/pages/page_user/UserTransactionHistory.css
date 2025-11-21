@@ -1,0 +1,17 @@
+.history-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.table-responsive { overflow-x: auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-radius: 8px; }
+.transaction-table { width: 100%; border-collapse: collapse; background: white; }
+.transaction-table th, .transaction-table td { padding: 15px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+.transaction-table th { background: #f3f4f6; color: #374151; font-weight: 600; }
+.transaction-table tr:hover { background: #f9fafb; }
+
+.trans-id { font-family: monospace; font-weight: bold; color: #4b5563; }
+.tag { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+.tag-blue { background: #dbeafe; color: #1e40af; }
+.tag-red { background: #fee2e2; color: #991b1b; }
+.font-bold { font-weight: bold; color: #111827; }
+.text-center { text-align: center; color: #6b7280; padding: 30px; }
+
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.success { background: #10b981; }
+.status-dot.failed { background: #ef4444; }

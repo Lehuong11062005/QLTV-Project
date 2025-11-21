@@ -1,0 +1,128 @@
+/* Container chính */
+.stats-container {
+    padding: 20px;
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.stats-header {
+    margin-bottom: 25px;
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 15px;
+}
+
+.stats-title {
+    color: #1a202c;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Grid layout cho các báo cáo */
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 25px;
+}
+
+/* Style cho từng Card báo cáo */
+.report-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    padding: 20px;
+    transition: transform 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.report-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #4a5568;
+    margin-bottom: 15px;
+    border-left: 4px solid #3b82f6;
+    padding-left: 10px;
+}
+
+/* Bảng dữ liệu đẹp */
+.custom-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9rem;
+}
+
+.custom-table th {
+    background-color: #f1f5f9;
+    color: #64748b;
+    font-weight: 600;
+    text-align: left;
+    padding: 12px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.custom-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    vertical-align: middle;
+}
+
+.custom-table tr:last-child td {
+    border-bottom: none;
+}
+
+.custom-table tr:hover {
+    background-color: #f8fafc;
+}
+
+/* Tiện ích: Ảnh nhỏ, Badge trạng thái... */
+.book-thumb {
+    width: 40px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-right: 10px;
+    vertical-align: middle;
+}
+
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.font-bold { font-weight: bold; }
+.text-success { color: #10b981; }
+
+/* Loading & Error */
+.loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 300px;
+    font-size: 1.2rem;
+    color: #3b82f6;
+}
+
+.error-msg {
+    background-color: #fee2e2;
+    color: #991b1b;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .reports-grid {
+        grid-template-columns: 1fr;
+    }
+}

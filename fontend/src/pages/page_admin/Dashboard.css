@@ -1,0 +1,147 @@
+/* src/pages/page_admin/Dashboard.css */
+
+/* Keyframes cho hiệu ứng loading */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Base style cho trang tổng quan */
+.dashboard-title {
+    border-bottom: 3px solid #e5e7eb;
+    padding-bottom: 10px;
+    color: #111827;
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 25px;
+}
+
+/* Container cho Stat Cards */
+.stat-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+/* Card container */
+.stat-card-link {
+    text-decoration: none;
+}
+
+.stat-card {
+    padding: 24px 22px;
+    border-radius: 14px;
+    color: white;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    transition: all 0.25s ease;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 130px;
+}
+
+.stat-card:hover {
+    transform: translateY(-6px);
+}
+
+.stat-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stat-card-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.stat-card-icon {
+    font-size: 2rem;
+}
+
+.stat-card-value {
+    margin: 10px 0 5px 0;
+    font-size: 2.4rem;
+    font-weight: bold;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.stat-card-details {
+    font-size: 0.8rem;
+    opacity: 0.85;
+}
+
+/* Loading state */
+.loading-container {
+    text-align: center;
+    padding: 50px;
+    font-size: 1.2rem;
+    color: #2563eb;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #93c5fd;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    margin: 0 auto 15px;
+    animation: spin 1s linear infinite;
+}
+
+/* Quick Links */
+.quick-links-container {
+    margin-top: 40px;
+}
+
+.quick-links-title {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 5px;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.quick-links-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.quick-link-button {
+    padding: 12px 20px;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.05);
+    transition: all 0.25s ease;
+    text-decoration: none; /* đảm bảo link không bị gạch chân */
+    color: inherit; /* đảm bảo màu chữ không bị đổi */
+}
+
+.quick-link-button:hover {
+    background-color: #f3f4f6;
+    transform: translateY(-2px);
+}
+
+.quick-link-icon {
+    font-size: 1.3rem;
+}
+
+/* Error Message */
+.error-message {
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}

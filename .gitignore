@@ -1,0 +1,13 @@
+# Dependency directories
+node_modules/
+
+# System junk
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+
+# Logs
+*.log

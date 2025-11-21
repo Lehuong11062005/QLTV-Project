@@ -1,0 +1,162 @@
+/* Container chính */
+.navbar-container {
+    background: linear-gradient(135deg, #334155, #475569);
+    color: white;
+    padding: 12px 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+/* Logo Section */
+.navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-link {
+    text-decoration: none;
+}
+
+.logo-text {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    background: linear-gradient(45deg, #fff, #e2e8f0);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    cursor: pointer;
+}
+
+.role-badge {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    white-space: nowrap;
+}
+
+/* Menu Section */
+.navbar-menu {
+    display: flex;
+    align-items: center;
+}
+
+/* User Logged In */
+.user-section {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.user-info {
+    text-align: right;
+    line-height: 1.2;
+}
+
+.user-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.user-name span {
+    color: #fbbf24; /* Màu vàng nổi bật */
+}
+
+.user-email {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* Buttons Base Style */
+.nav-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.nav-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Specific Buttons */
+.btn-profile {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-profile:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-logout {
+    background: rgba(239, 68, 68, 0.85); /* Đỏ */
+    color: white;
+    border: none;
+}
+
+.btn-logout:hover {
+    background: #ef4444;
+}
+
+/* Auth Buttons (Not Logged In) */
+.auth-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.btn-login {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-login:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-register {
+    background: rgba(34, 197, 94, 0.85); /* Xanh lá */
+    color: white;
+    border-color: rgba(34, 197, 94, 0.5);
+}
+
+.btn-register:hover {
+    background: #22c55e;
+}
+
+/* Responsive Mobile */
+@media (max-width: 768px) {
+    .navbar-container {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
+    }
+    
+    .user-info {
+        display: none; /* Ẩn thông tin chi tiết trên mobile cho gọn */
+    }
+
+    .navbar-menu {
+        width: 100%;
+        justify-content: center;
+    }
+}

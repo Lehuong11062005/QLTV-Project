@@ -1,0 +1,19 @@
+.payment-container { max-width: 900px; margin: 0 auto; padding: 20px; }
+.page-title { border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 30px; color: #1e3a8a; }
+.section-block { margin-bottom: 40px; }
+.section-title { margin-bottom: 15px; font-size: 1.2rem; border-left: 4px solid #2563eb; padding-left: 10px; }
+.text-red { color: #dc2626; border-color: #dc2626; }
+.empty-text { font-style: italic; color: #6b7280; background: #f9fafb; padding: 15px; border-radius: 8px; }
+
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+.pay-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; }
+.fine-card { border-left: 4px solid #dc2626; }
+
+.pay-card-header { background: #f8fafc; padding: 12px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; }
+.pay-card-body { padding: 15px; flex: 1; }
+.money-highlight { font-size: 1.4rem; font-weight: bold; color: #2563eb; margin: 10px 0 0 0; }
+.pay-card-footer { padding: 15px; background: #fff; border-top: 1px solid #eee; text-align: right; }
+
+.status-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; color: white; }
+.status-badge.pending { background: #d97706; }
+.status-badge.error { background: #dc2626; }

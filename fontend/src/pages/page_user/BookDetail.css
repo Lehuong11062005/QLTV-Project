@@ -1,0 +1,321 @@
+/* src/pages/page_user/BookDetail.css */
+.book-detail-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.book-detail-title {
+    color: #1f2937;
+    margin-bottom: 24px;
+    font-size: 2rem;
+    text-align: center;
+}
+
+.book-detail-content {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 40px;
+    margin-top: 20px;
+    padding: 30px;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
+    align-items: start;
+}
+
+.book-image-section {
+    display: flex;
+    justify-content: center;
+}
+
+.book-detail-image {
+    width: 100%;
+    height: 400px;
+    border-radius: 14px;
+    object-fit: cover;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    transition: transform 0.3s ease;
+}
+
+.book-detail-image:hover {
+    transform: scale(1.02);
+}
+
+.book-info-section {
+    line-height: 1.8;
+}
+
+.book-basic-info {
+    margin-bottom: 24px;
+}
+
+.book-title {
+    color: #1f2937;
+    font-size: 1.5rem;
+    margin: 12px 0;
+    line-height: 1.4;
+}
+
+.info-label {
+    font-weight: 600;
+    color: #374151;
+    min-width: 120px;
+    display: inline-block;
+}
+
+.book-pricing-info {
+    margin: 24px 0;
+    padding: 20px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border-left: 4px solid #3b82f6;
+}
+
+.book-price {
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.price-value {
+    color: #dc2626;
+    font-weight: bold;
+    font-size: 1.3rem;
+}
+
+.book-stock {
+    font-size: 1.1rem;
+}
+
+.stock-value.in-stock {
+    color: #16a34a;
+    font-weight: bold;
+}
+
+.stock-value.out-of-stock {
+    color: #dc2626;
+    font-weight: bold;
+}
+
+.book-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 2px dashed #e5e7eb;
+}
+
+.action-section {
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.action-section h4 {
+    margin-bottom: 16px;
+    color: #374151;
+    font-size: 1.1rem;
+}
+
+.borrow-section {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    box-shadow: 0 3px 10px rgba(251, 146, 60, 0.1);
+}
+
+.purchase-section {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    box-shadow: 0 3px 10px rgba(34, 197, 94, 0.1);
+}
+
+.quantity-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.quantity-selector label {
+    font-weight: 600;
+    color: #374151;
+}
+
+.quantity-selector input {
+    width: 70px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    text-align: center;
+    font-size: 1rem;
+}
+
+.quantity-selector input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Button Styles */
+.base-button {
+    border: none;
+    padding: 14px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.28s ease;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.14);
+}
+
+.base-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.base-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-borrow-cart {
+    composes: base-button;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.btn-purchase-cart {
+    composes: base-button;
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    color: white;
+}
+
+/* Loading and Error States */
+.book-detail-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #e5e7eb;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.book-detail-error {
+    text-align: center;
+    padding: 60px 20px;
+    background: #fef2f2;
+    border-radius: 12px;
+    border: 1px solid #fecaca;
+}
+
+.back-to-books-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    margin-top: 20px;
+    transition: background 0.2s;
+}
+
+.back-to-books-btn:hover {
+    background: #2563eb;
+}
+
+.out-of-stock-message {
+    text-align: center;
+    padding: 20px;
+    background: #fef2f2;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+    margin-top: 20px;
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .book-detail-content {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 20px;
+    }
+    
+    .book-detail-image {
+        height: 300px;
+        max-width: 250px;
+        margin: 0 auto;
+    }
+    
+    .book-actions {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    
+    .book-detail-title {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .book-detail-container {
+        padding: 10px;
+    }
+    
+    .book-detail-content {
+        padding: 16px;
+    }
+    
+    .base-button {
+        padding: 12px 16px;
+        font-size: 0.9rem;
+    }
+}
+/* THÊM VÀO BookDetail.css */
+.error-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    justify-content: center;
+}
+
+.retry-btn {
+    background: #16a34a;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.retry-btn:hover {
+    background: #15803d;
+}

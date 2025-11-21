@@ -1,0 +1,135 @@
+/* src/pages/page_user/BorrowDetail.css */
+
+.borrow-detail-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.detail-title {
+    font-size: 1.8em;
+    color: #333;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.id-highlight {
+    color: #007bff;
+    font-weight: 600;
+}
+
+/* Header Info (Trạng thái, Ngày) */
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 30px;
+    border-left: 5px solid #007bff;
+}
+
+.status-info, .date-info {
+    font-size: 1em;
+    color: #555;
+}
+
+.status-badge {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: 600;
+    margin-left: 10px;
+    color: white; /* Màu chữ chung */
+}
+
+/* Các màu trạng thái */
+.badge-success { background-color: #28a745; } /* Đã trả hết */
+.badge-danger { background-color: #dc3545; }  /* Quá hạn */
+.badge-primary { background-color: #007bff; } /* Đã duyệt */
+.badge-warning { background-color: #ffc107; } /* Chờ duyệt */
+
+
+/* Danh sách sách mượn */
+.section-title {
+    font-size: 1.4em;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.book-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.book-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    transition: box-shadow 0.2s;
+}
+
+.book-item:hover {
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.book-image {
+    width: 60px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-right: 15px;
+}
+
+.book-info p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.book-name {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px !important;
+}
+
+.book-copy {
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.detail-actions {
+    margin-top: 30px;
+    text-align: left;
+}
+
+.btn-back {
+    padding: 10px 20px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s;
+}
+
+.btn-back:hover {
+    background-color: #5a6268;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .detail-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+}
