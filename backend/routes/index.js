@@ -12,7 +12,7 @@ router.use('/cart', require('./cartRoutes'));
 router.use('/orders', require('./orderRoutes'));
 router.use('/auth', require('./authRoutes'));
 router.use('/user', require('./userRoutes'));
-router.use('/Feedback', require('./feedbackRoutes'));
+router.use('/Feedback', require('./FeedbackRoutes'));
 router.use('/book-status', require('./bookStatusRoutes'));
 
 router.get('/test', (req, res) => res.json({ message: 'API hoạt động bình thường 🚀' }));
