@@ -9,17 +9,16 @@ const config = require('../db/dbConfig');
 // GET /api/stats/dashboard
 exports.getDashboardStats = async (req, res) => {
     try {
-        // 👇 SỬA LẠI CÁCH KẾT NỐI (Dùng sql.connect thay vì poolPromise)
         const pool = await sql.connect(config);
         
-        // 1. Tổng quan người dùng
+        // 1. Tổng quan người dùng (Bảng DocGia, ThuThu) - Khớp [cite: 5]
         const totalUsers = await pool.request().query(`
             SELECT 
                 (SELECT COUNT(*) FROM DocGia) AS TotalDocGia,
                 (SELECT COUNT(*) FROM ThuThu) AS TotalThuThu
         `);
         
-        // 2. Tổng quan sách trong kho
+        // 2. Tổng quan sách (Bảng Sach, BanSao_ThuVien) - Khớp 
         const totalBooks = await pool.request().query(`
             SELECT 
                 ISNULL(SUM(SoLuongTon), 0) AS TotalStock,
@@ -28,23 +27,26 @@ exports.getDashboardStats = async (req, res) => {
             FROM Sach
         `);
         
-        // 3. Thống kê Mượn/Trả (ĐÃ SỬA LỖI LOGIC COUNT)
+        // 3. Thống kê Mượn/Trả (Bảng MuonSach, BanSao_ThuVien) - Khớp 
         const borrowReturnStats = await pool.request().query(`
             SELECT
-                -- Tổng số phiếu mượn
+                -- Tổng phiếu mượn
                 (SELECT COUNT(*) FROM MuonSach) AS TotalBorrowOrders,
+
+                -- Đơn chờ duyệt (Khớp trạng thái 'ChoDuyet' trong file )
+                (SELECT COUNT(*) FROM MuonSach WHERE TrangThai = N'ChoDuyet') AS PendingBorrowOrders,
                 
-                -- Sách đang được mượn (Đếm trong bảng BanSao_ThuVien)
+                -- Sách đang mượn (Khớp trạng thái 'DangMuon' trong file )
                 (SELECT COUNT(*) FROM BanSao_ThuVien WHERE TrangThaiBanSao = 'DangMuon') AS CurrentlyBorrowed,
                 
-                -- Sách quá hạn (Đếm số bản sao trong các phiếu quá hạn)
+                -- Sách quá hạn (Khớp trạng thái 'QuaHan' trong file )
                 (SELECT COUNT(MSS.MaBanSao) 
                  FROM MuonSach MS 
                  JOIN MuonSach_Sach MSS ON MS.MaMuon = MSS.MaMuon 
                  WHERE MS.TrangThai = N'QuaHan') AS OverdueBorrows
         `);
         
-        // 4. Tổng Doanh thu
+        // 4. Tổng Doanh thu (Bảng DonHang) - Khớp [cite: 9]
         const totalRevenue = await pool.request().query(`
             SELECT 
                 ISNULL(SUM(TongTien), 0) AS TotalRevenue,
@@ -53,7 +55,15 @@ exports.getDashboardStats = async (req, res) => {
             WHERE TrangThaiThanhToan = N'DaThanhToan' 
                OR TrangThai = N'HoanThanh'
         `);
+
+        // 5. ⭐️ MỚI: Thống kê Phản hồi từ bảng PhanHoi 
+        const feedbackStats = await pool.request().query(`
+             SELECT COUNT(*) AS PendingFeedback 
+             FROM PhanHoi 
+             WHERE TrangThai = N'Chưa xử lý'
+        `);
         
+        // Trả về JSON
         res.json({
             users: totalUsers.recordset[0],
             books: {
@@ -63,6 +73,9 @@ exports.getDashboardStats = async (req, res) => {
             },
             borrowing: borrowReturnStats.recordset[0],
             revenue: totalRevenue.recordset[0],
+            
+            // ⭐️ Dữ liệu phản hồi thật
+            feedback: feedbackStats.recordset[0] 
         });
 
     } catch (err) {
