@@ -1,7 +1,9 @@
+// src/routes/bookRoutes.js
 const express = require('express');
 const router = express.Router();
+const upload = require('../config/cloudinaryConfig'); // 👈 BẮT BUỘC: Import cấu hình upload
 
-// Import chính xác các tên hàm từ file Controller "xịn" của bạn
+// Import các hàm từ Controller
 const { 
     searchBooks, 
     getAllBooksAdmin, 
@@ -12,46 +14,41 @@ const {
     deleteBook 
 } = require('../controllers/bookController');
 
-// Import Middleware (giữ nguyên như bạn đang dùng)
 const { authenticateToken } = require('../middleware/authMiddleware');
 const adminMiddleware = require('../middleware/adminMiddleware');
 
 // ============================================================
-// 1. CÁC ROUTE TĨNH (BẮT BUỘC ĐẶT TRÊN CÙNG)
+// 1. CÁC ROUTE TĨNH (GET)
 // ============================================================
 
-// Tìm kiếm sách (Public - Trang chủ/Danh sách sách)
-// GET /api/books/search?search=...&page=1
 router.get('/search', searchBooks);
-
-// Lấy dữ liệu phụ trợ (Tác giả, Danh mục) cho Dropdown (Admin)
-// GET /api/books/metadata -> Khắc phục lỗi 404 metadata
 router.get('/metadata', authenticateToken, adminMiddleware, getBookMetadata);
-
-// Lấy danh sách quản trị dạng bảng (Admin)
-// GET /api/books/admin -> Khắc phục lỗi 404 admin
 router.get('/admin', authenticateToken, adminMiddleware, getAllBooksAdmin);
 
-
 // ============================================================
-// 2. CÁC ROUTE ĐỘNG (CÓ THAM SỐ :ID - ĐẶT XUỐNG DƯỚI)
+// 2. CÁC ROUTE ĐỘNG & CRUD (CÓ UPLOAD ẢNH)
 // ============================================================
 
-// Xem chi tiết sách (Public)
-// GET /api/books/S001
-// ⚠️ Nếu đặt route này lên đầu, chữ "admin" sẽ bị hiểu là một :MaSach -> Gây lỗi
-router.get('/:MaSach', getSachById);
+// Thêm sách: Thêm upload.single('AnhMinhHoa') để xử lý file
+router.post('/', 
+    authenticateToken, 
+    adminMiddleware, 
+    upload.single('AnhMinhHoa'), 
+    createBook
+);
 
-// Thêm sách mới (Admin)
-// POST /api/books
-router.post('/', authenticateToken, adminMiddleware, createBook);
+// Cập nhật sách: Cũng cần upload để hỗ trợ đổi ảnh bìa
+router.put('/:id', 
+    authenticateToken, 
+    adminMiddleware, 
+    upload.single('AnhMinhHoa'), 
+    updateBook
+);
 
-// Cập nhật sách (Admin)
-// PUT /api/books/S001
-router.put('/:id', authenticateToken, adminMiddleware, updateBook);
-
-// Xóa sách (Admin)
-// DELETE /api/books/S001
+// Xóa sách
 router.delete('/:id', authenticateToken, adminMiddleware, deleteBook);
+
+// Xem chi tiết (Đặt cuối cùng)
+router.get('/:MaSach', getSachById);
 
 module.exports = router;

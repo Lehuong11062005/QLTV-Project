@@ -11,14 +11,14 @@ exports.getDashboardStats = async (req, res) => {
     try {
         const pool = await sql.connect(config);
         
-        // 1. Tổng quan người dùng (Bảng DocGia, ThuThu) - Khớp [cite: 5]
+        // 1. Users (Giữ nguyên)
         const totalUsers = await pool.request().query(`
             SELECT 
                 (SELECT COUNT(*) FROM DocGia) AS TotalDocGia,
                 (SELECT COUNT(*) FROM ThuThu) AS TotalThuThu
         `);
         
-        // 2. Tổng quan sách (Bảng Sach, BanSao_ThuVien) - Khớp 
+        // 2. Books (Giữ nguyên)
         const totalBooks = await pool.request().query(`
             SELECT 
                 ISNULL(SUM(SoLuongTon), 0) AS TotalStock,
@@ -27,43 +27,30 @@ exports.getDashboardStats = async (req, res) => {
             FROM Sach
         `);
         
-        // 3. Thống kê Mượn/Trả (Bảng MuonSach, BanSao_ThuVien) - Khớp 
-        const borrowReturnStats = await pool.request().query(`
+        // 3. Borrowing (Giữ nguyên)
+        const borrowStats = await pool.request().query(`
             SELECT
-                -- Tổng phiếu mượn
                 (SELECT COUNT(*) FROM MuonSach) AS TotalBorrowOrders,
-
-                -- Đơn chờ duyệt (Khớp trạng thái 'ChoDuyet' trong file )
                 (SELECT COUNT(*) FROM MuonSach WHERE TrangThai = N'ChoDuyet') AS PendingBorrowOrders,
-                
-                -- Sách đang mượn (Khớp trạng thái 'DangMuon' trong file )
                 (SELECT COUNT(*) FROM BanSao_ThuVien WHERE TrangThaiBanSao = 'DangMuon') AS CurrentlyBorrowed,
-                
-                -- Sách quá hạn (Khớp trạng thái 'QuaHan' trong file )
-                (SELECT COUNT(MSS.MaBanSao) 
-                 FROM MuonSach MS 
-                 JOIN MuonSach_Sach MSS ON MS.MaMuon = MSS.MaMuon 
-                 WHERE MS.TrangThai = N'QuaHan') AS OverdueBorrows
+                (SELECT COUNT(MSS.MaBanSao) FROM MuonSach MS JOIN MuonSach_Sach MSS ON MS.MaMuon = MSS.MaMuon WHERE MS.TrangThai = N'QuaHan') AS OverdueBorrows
         `);
-        
-        // 4. Tổng Doanh thu (Bảng DonHang) - Khớp [cite: 9]
+
+        // 4. 🔥 SỬA: TỔNG DOANH THU (Lấy trực tiếp từ bảng THANH TOÁN)
+        // Chỉ tính những giao dịch có trạng thái 'HoanThanh'
         const totalRevenue = await pool.request().query(`
             SELECT 
-                ISNULL(SUM(TongTien), 0) AS TotalRevenue,
-                COUNT(MaDH) AS TotalPurchaseOrders
-            FROM DonHang 
-            WHERE TrangThaiThanhToan = N'DaThanhToan' 
-               OR TrangThai = N'HoanThanh'
+                ISNULL(SUM(SoTien), 0) AS TotalRevenue,
+                (SELECT COUNT(MaDH) FROM DonHang) AS TotalPurchaseOrders
+            FROM ThanhToan
+            WHERE TrangThai = N'HoanThanh'
         `);
 
-        // 5. ⭐️ MỚI: Thống kê Phản hồi từ bảng PhanHoi 
+        // 5. Feedback (Giữ nguyên)
         const feedbackStats = await pool.request().query(`
-             SELECT COUNT(*) AS PendingFeedback 
-             FROM PhanHoi 
-             WHERE TrangThai = N'Chưa xử lý'
+             SELECT COUNT(*) AS PendingFeedback FROM PhanHoi WHERE TrangThai = N'Chưa xử lý'
         `);
         
-        // Trả về JSON
         res.json({
             users: totalUsers.recordset[0],
             books: {
@@ -71,16 +58,14 @@ exports.getDashboardStats = async (req, res) => {
                 TotalUniqueBooks: totalBooks.recordset[0].TotalUniqueBooks,
                 AvailableStock: totalBooks.recordset[0].AvailableCopies
             },
-            borrowing: borrowReturnStats.recordset[0],
-            revenue: totalRevenue.recordset[0],
-            
-            // ⭐️ Dữ liệu phản hồi thật
+            borrowing: borrowStats.recordset[0],
+            revenue: totalRevenue.recordset[0], 
             feedback: feedbackStats.recordset[0] 
         });
 
     } catch (err) {
-        console.error('Lỗi lấy dữ liệu Dashboard:', err);
-        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu tổng quan.' });
+        console.error('Lỗi Dashboard:', err);
+        res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
@@ -92,15 +77,12 @@ exports.getDashboardStats = async (req, res) => {
 exports.getTopBorrowedBooks = async (req, res) => {
     const top = 10; 
     try {
-        const pool = await sql.connect(config); // Sửa kết nối
-        
+        const pool = await sql.connect(config);
         const result = await pool.request()
             .input('topN', sql.Int, top)
             .query(`
                 SELECT TOP (@topN)
-                    S.MaSach,
-                    S.TenSach,
-                    S.AnhMinhHoa,
+                    S.MaSach, S.TenSach, S.AnhMinhHoa,
                     COUNT(MSS.MaBanSao) AS TotalBorrowTimes
                 FROM MuonSach_Sach MSS
                 JOIN BanSao_ThuVien BS ON MSS.MaBanSao = BS.MaBanSao
@@ -108,11 +90,23 @@ exports.getTopBorrowedBooks = async (req, res) => {
                 GROUP BY S.MaSach, S.TenSach, S.AnhMinhHoa
                 ORDER BY TotalBorrowTimes DESC
             `);
-        
         res.json(result.recordset);
     } catch (err) {
-        console.error('Lỗi lấy báo cáo sách hot:', err);
-        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo sách.' });
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+};
+
+exports.getInventoryReport = async (req, res) => {
+    try {
+        const pool = await sql.connect(config);
+        const result = await pool.request().query(`
+            SELECT DM.TenDM, COUNT(S.MaSach) AS TotalUniqueBooks, ISNULL(SUM(S.SoLuongTon), 0) AS TotalStockQuantity
+            FROM DanhMuc DM LEFT JOIN Sach S ON DM.MaDM = S.MaDM
+            GROUP BY DM.TenDM ORDER BY TotalStockQuantity DESC
+        `);
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
@@ -120,25 +114,30 @@ exports.getTopBorrowedBooks = async (req, res) => {
 exports.getMonthlyRevenue = async (req, res) => {
     const currentYear = new Date().getFullYear(); 
     try {
-        const pool = await sql.connect(config); // Sửa kết nối
+        const pool = await sql.connect(config);
+        
+        // 🔥 SỬA: Tính tổng tiền theo tháng dựa trên ngày thanh toán thực tế (NgayThanhToan)
+        // Từ bảng ThanhToan, không quan tâm nguồn gốc là Đơn hàng hay Phạt
         const result = await pool.request()
             .input('CurrentYear', sql.Int, currentYear)
             .query(`
-                SELECT
-                    MONTH(NgayTao) AS Month,
-                    ISNULL(SUM(TongTien), 0) AS TotalRevenue
-                FROM DonHang
-                WHERE YEAR(NgayTao) = @CurrentYear
-                AND (TrangThai = N'HoanThanh' OR TrangThaiThanhToan = N'DaThanhToan')
-                GROUP BY MONTH(NgayTao)
+                SELECT 
+                    MONTH(NgayThanhToan) AS Month,
+                    ISNULL(SUM(SoTien), 0) AS TotalRevenue
+                FROM ThanhToan
+                WHERE YEAR(NgayThanhToan) = @CurrentYear
+                AND TrangThai = N'HoanThanh'
+                GROUP BY MONTH(NgayThanhToan)
                 ORDER BY Month
             `);
             
+        // Chuẩn bị dữ liệu 12 tháng
         const monthlyData = Array.from({ length: 12 }, (_, i) => ({ 
             name: `Tháng ${i + 1}`, 
             revenue: 0 
         }));
         
+        // Map dữ liệu vào
         result.recordset.forEach(row => {
             if (row.Month >= 1 && row.Month <= 12) {
                 monthlyData[row.Month - 1].revenue = row.TotalRevenue;
@@ -147,8 +146,8 @@ exports.getMonthlyRevenue = async (req, res) => {
 
         res.json({ year: currentYear, data: monthlyData });
     } catch (err) {
-        console.error('Lỗi lấy báo cáo doanh thu:', err);
-        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo doanh thu.' });
+        console.error('Lỗi báo cáo doanh thu:', err);
+        res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 

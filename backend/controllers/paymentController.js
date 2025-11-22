@@ -11,60 +11,89 @@ const MOMO_CONFIG = {
     secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz", 
     endpoint: "https://test-payment.momo.vn/v2/gateway/api/create",
     redirectUrl: "http://localhost:3000/payment-result", 
-    ipnUrl: "https://webhook.site/..." // Hoặc link ngrok của bạn
+    ipnUrl: "https://webhook.site/..." // Điền link webhook thật nếu có
 };
 
-// Hàm tạo ID giao dịch duy nhất
 const generateTransId = () => `MOMO${Date.now()}`;
 
 // ============================================================
-// 1. TẠO URL THANH TOÁN (GỌI TỪ REACT)
+// 1. TẠO URL THANH TOÁN (ĐÃ SỬA: LẤY TIỀN TỪ DB)
 // ============================================================
 exports.createPaymentUrl = async (req, res) => {
-    // loaiGiaoDich: 'DonHang' hoặc 'PhiPhat'
-    // referenceId: MaDH (nếu là đơn hàng) hoặc MaTra (nếu là phí phạt)
-    const { loaiGiaoDich, referenceId, amount } = req.body;
+    // Chỉ cần loaiGiaoDich và referenceId. Amount sẽ tự tính lại.
+    const { loaiGiaoDich, referenceId } = req.body;
 
-    const orderId = generateTransId(); // Mã giao dịch duy nhất cho lần thanh toán này
-    const requestId = orderId;
-    const orderInfo = `Thanh toan ${loaiGiaoDich} ${referenceId}`;
-    
-    // Lưu tạm vào bảng ThanhToan với trạng thái 'KhoiTao'
     try {
         const pool = await sql.connect(config);
         
-        // Tạo mã thanh toán (MaTT)
+        // 1. 🔥 QUAN TRỌNG: Lấy số tiền thực tế từ Database
+        let amount = 0;
+        
+        if (loaiGiaoDich === 'DonHang') {
+            // Lấy TongTien từ bảng DonHang
+            const orderResult = await pool.request()
+                .input('MaDH', sql.VarChar, referenceId)
+                .query("SELECT TongTien FROM DonHang WHERE MaDH = @MaDH");
+            
+            if (orderResult.recordset.length === 0) {
+                return res.status(404).json({ message: "Không tìm thấy đơn hàng." });
+            }
+            amount = orderResult.recordset[0].TongTien;
+
+        } else if (loaiGiaoDich === 'PhiPhat') {
+            // Lấy TongTienPhat từ bảng TraSach
+            const fineResult = await pool.request()
+                .input('MaTra', sql.VarChar, referenceId)
+                .query("SELECT TongTienPhat FROM TraSach WHERE MaTra = @MaTra");
+            
+            if (fineResult.recordset.length === 0) {
+                return res.status(404).json({ message: "Không tìm thấy phiếu trả sách." });
+            }
+            amount = fineResult.recordset[0].TongTienPhat;
+        } else {
+            return res.status(400).json({ message: "Loại giao dịch không hợp lệ." });
+        }
+
+        // Kiểm tra nếu số tiền <= 0 hoặc null
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ (0đ)." });
+        }
+        
+        // Chuyển amount về dạng số nguyên (Momo yêu cầu không có số thập phân)
+        amount = Math.round(amount);
+
+        // 2. Tiếp tục quy trình Momo như cũ
+        const orderId = generateTransId(); 
+        const requestId = orderId;
+        const orderInfo = `Thanh toan ${loaiGiaoDich} ${referenceId}`;
+        
         const maTT = `TT${Date.now().toString().slice(-8)}`; 
+        let maDH = loaiGiaoDich === 'DonHang' ? referenceId : null;
+        let maPhat = loaiGiaoDich === 'PhiPhat' ? referenceId : null;
 
-        let maDH = null;
-        let maPhat = null; // Trong DB bạn gọi là MaPhat, nhưng logic là liên kết với MaTra
-
-        if (loaiGiaoDich === 'DonHang') maDH = referenceId;
-        if (loaiGiaoDich === 'PhiPhat') maPhat = referenceId;
-
+        // Lưu vào bảng ThanhToan
         await pool.request()
             .input('MaTT', sql.VarChar, maTT)
             .input('MaDH', sql.VarChar, maDH)
             .input('MaPhat', sql.VarChar, maPhat)
-            .input('SoTien', sql.Decimal, amount)
-            .input('MaGiaoDich', sql.VarChar, orderId) // Lưu tạm orderId MoMo vào đây để đối chiếu
+            .input('SoTien', sql.Decimal, amount) // Lưu đúng số tiền lấy từ DB
+            .input('MaGiaoDich', sql.VarChar, orderId)
             .input('LoaiGiaoDich', sql.NVarChar, loaiGiaoDich)
             .query(`
                 INSERT INTO ThanhToan (MaTT, MaDH, MaPhat, PhuongThuc, SoTien, TrangThai, MaGiaoDich, NgayThanhToan, LoaiGiaoDich)
                 VALUES (@MaTT, @MaDH, @MaPhat, 'MoMo', @SoTien, N'KhoiTao', @MaGiaoDich, GETDATE(), @LoaiGiaoDich)
             `);
 
-        // --- TẠO CHỮ KÝ MOMO ---
+        // Tạo chữ ký Momo
         const rawSignature = `accessKey=${MOMO_CONFIG.accessKey}&amount=${amount}&extraData=&ipnUrl=${MOMO_CONFIG.ipnUrl}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${MOMO_CONFIG.partnerCode}&redirectUrl=${MOMO_CONFIG.redirectUrl}&requestId=${requestId}&requestType=captureWallet`;
 
         const signature = crypto.createHmac('sha256', MOMO_CONFIG.secretKey)
             .update(rawSignature)
             .digest('hex');
 
-        // --- GỬI REQUEST SANG MOMO ---
         const requestBody = {
             partnerCode: MOMO_CONFIG.partnerCode,
-            partnerName: "Thu Vien Moi",
+            partnerName: "Thu Vien Nhom 10",
             storeId: "MomoTestStore",
             requestId: requestId,
             amount: amount,
@@ -80,59 +109,70 @@ exports.createPaymentUrl = async (req, res) => {
         };
 
         const momoResponse = await axios.post(MOMO_CONFIG.endpoint, requestBody);
-        
-        // Trả về URL thanh toán cho React redirect
         return res.json({ payUrl: momoResponse.data.payUrl });
 
     } catch (err) {
         console.error("Lỗi tạo thanh toán:", err);
-        return res.status(500).json({ message: "Lỗi tạo giao dịch MoMo" });
+        return res.status(500).json({ message: "Lỗi tạo giao dịch: " + err.message });
     }
 };
 
 // ============================================================
-// 2. XỬ LÝ IPN (MOMO GỌI LẠI KHI KHÁCH ĐÃ TRẢ TIỀN)
+// 2. XỬ LÝ IPN (MOMO GỌI LẠI) - ĐÃ CẬP NHẬT ĐỂ ĐỒNG BỘ
 // ============================================================
 exports.handleMomoCallback = async (req, res) => {
-    const { resultCode, orderId, amount } = req.body;
+    const { resultCode, orderId } = req.body; // Không cần tin tưởng 'amount' từ Momo gửi về, chỉ cần check orderId
     
-    // resultCode = 0 nghĩa là thành công
     if (resultCode === 0) {
         try {
             const pool = await sql.connect(config);
             
-            // 1. Cập nhật bảng ThanhToan thành công
-            // Sử dụng orderId (đã lưu vào MaGiaoDich lúc tạo) để tìm bản ghi
+            // Cập nhật trạng thái ThanhToan
             const result = await pool.request()
                 .input('MaGiaoDich', sql.VarChar, orderId)
                 .query(`
                     UPDATE ThanhToan 
                     SET TrangThai = N'HoanThanh', NgayThanhToan = GETDATE()
-                    OUTPUT inserted.LoaiGiaoDich, inserted.MaDH, inserted.MaPhat
+                    OUTPUT inserted.LoaiGiaoDich, inserted.MaDH, inserted.MaPhat, inserted.SoTien
                     WHERE MaGiaoDich = @MaGiaoDich
                 `);
 
             if (result.recordset.length > 0) {
-                const { LoaiGiaoDich, MaDH, MaPhat } = result.recordset[0];
+                const { LoaiGiaoDich, MaDH, MaPhat, SoTien } = result.recordset[0];
 
-                // 2. Cập nhật trạng thái nghiệp vụ (Đơn hàng hoặc Phạt)
+                // Cập nhật trạng thái nghiệp vụ chính
                 if (LoaiGiaoDich === 'DonHang' && MaDH) {
+                    // Cập nhật trạng thái Đơn Hàng
+                    // ⚠️ Đảm bảo TongTien trong đơn hàng khớp với số tiền đã thanh toán (Optional: Update lại lần nữa cho chắc)
                     await pool.request()
                         .input('MaDH', sql.VarChar, MaDH)
-                        .query("UPDATE DonHang SET TrangThaiThanhToan = N'DaThanhToan' WHERE MaDH = @MaDH");
+                        .input('TongTien', sql.Decimal, SoTien) 
+                        .query(`
+                            UPDATE DonHang 
+                            SET TrangThaiThanhToan = N'DaThanhToan',
+                                TrangThai = N'DangGiao', -- Chuyển trạng thái để admin biết đường giao
+                                TongTien = @TongTien     -- Cập nhật lại giá chốt cuối cùng (để khớp báo cáo)
+                            WHERE MaDH = @MaDH
+                        `);
                 } 
                 else if (LoaiGiaoDich === 'PhiPhat' && MaPhat) {
-                    // MaPhat ở đây chính là MaTra trong bảng TraSach (do thiết kế bảng ThanhToan dùng MaPhat)
-                    // Giả sử khi thanh toán xong thì coi như đã xử lý phạt xong
-                    // Bạn có thể cần thêm cột TrangThaiPhat vào TraSach, hoặc chỉ cần dựa vào bảng ThanhToan là đủ
-                    console.log(`Đã thanh toán phạt cho mã trả sách: ${MaPhat}`);
+                    // Với phí phạt, MaPhat = MaTra
+                    // Cập nhật lại TongTienPhat trong bảng TraSach cho khớp số tiền đã trả
+                    await pool.request()
+                         .input('MaTra', sql.VarChar, MaPhat)
+                         .input('TongTienPhat', sql.Decimal, SoTien)
+                         .query(`
+                            UPDATE TraSach 
+                            SET TongTienPhat = @TongTienPhat -- Cập nhật giá chốt
+                            WHERE MaTra = @MaTra
+                         `);
                 }
             }
         } catch (err) {
             console.error("Lỗi cập nhật DB từ IPN:", err);
         }
     } else {
-        // Giao dịch thất bại -> Cập nhật trạng thái Loi
+        // Giao dịch thất bại
         try {
             const pool = await sql.connect(config);
             await pool.request()
@@ -141,54 +181,70 @@ exports.handleMomoCallback = async (req, res) => {
         } catch(e) {}
     }
 
-    // Luôn trả về 204 cho MoMo để họ không gửi lại
     return res.status(204).json({});
 };
 
 // ============================================================
-// 3. LẤY LỊCH SỬ GIAO DỊCH (CHO TRANG ADMIN RIÊNG)
+// 3. LẤY LỊCH SỬ GIAO DỊCH (ADMIN)
 // ============================================================
 exports.getTransactionList = async (req, res) => {
     try {
         const pool = await sql.connect(config);
-        // Query này nối bảng để lấy thêm thông tin ngữ cảnh (Tên người trả tiền)
-        // Logic: Nếu là DonHang -> Lấy MaDG từ DonHang. Nếu là PhiPhat -> Lấy MaTra -> MaMuon -> MaDG
         const result = await pool.request().query(`
             SELECT 
-                TT.MaTT, 
-                TT.MaGiaoDich AS MaMoMo,
-                TT.SoTien, 
-                TT.PhuongThuc, 
-                TT.TrangThai, 
-                TT.NgayThanhToan, 
-                TT.LoaiGiaoDich, -- 'DonHang' hoặc 'PhiPhat'
-                TT.NoiDung,
-                COALESCE(TT.MaDH, TT.MaPhat) AS MaThamChieu, -- Mã đơn hàng hoặc Mã trả sách
+                TT.MaTT, TT.MaGiaoDich AS MaMoMo, TT.SoTien, TT.PhuongThuc, 
+                TT.TrangThai, TT.NgayThanhToan, TT.LoaiGiaoDich,
+                COALESCE(TT.MaDH, TT.MaPhat) AS MaThamChieu,
                 CASE 
                     WHEN TT.LoaiGiaoDich = 'DonHang' THEN DG_DH.HoTen 
                     WHEN TT.LoaiGiaoDich = 'PhiPhat' THEN DG_TS.HoTen 
                     ELSE N'Khách vãng lai' 
                 END AS NguoiThanhToan
             FROM ThanhToan TT
-            -- Join để lấy tên người mua (Đơn hàng)
             LEFT JOIN DonHang DH ON TT.MaDH = DH.MaDH
             LEFT JOIN DocGia DG_DH ON DH.MaDG = DG_DH.MaDG
-            -- Join để lấy tên người nộp phạt (Trả sách -> Mượn sách -> Độc giả)
             LEFT JOIN TraSach TS ON TT.MaPhat = TS.MaTra
             LEFT JOIN MuonSach MS ON TS.MaMuon = MS.MaMuon
             LEFT JOIN DocGia DG_TS ON MS.MaDG = DG_TS.MaDG
-            
             ORDER BY TT.NgayThanhToan DESC
         `);
-        
         res.json(result.recordset);
     } catch (err) {
         console.error("Lỗi lấy lịch sử giao dịch:", err);
-        res.status(500).json({ message: "Lỗi server khi tải giao dịch." });
+        res.status(500).json({ message: "Lỗi server." });
     }
 };
 
-// Thêm hàm cập nhật trạng thái thủ công (nếu MoMo lỗi IPN)
+// ============================================================
+// 4. LẤY LỊCH SỬ GIAO DỊCH (USER)
+// ============================================================
+exports.getMyTransactions = async (req, res) => {
+    const { MaDG } = req.user;
+    if (!MaDG) return res.status(403).json({ message: "Không phải độc giả." });
+
+    try {
+        const pool = await sql.connect(config);
+        const result = await pool.request()
+            .input('MaDG', sql.VarChar, MaDG)
+            .query(`
+                SELECT 
+                    TT.MaTT, TT.MaGiaoDich, TT.SoTien, TT.TrangThai, 
+                    TT.NgayThanhToan, TT.LoaiGiaoDich,
+                    COALESCE(TT.MaDH, TT.MaPhat) AS MaThamChieu
+                FROM ThanhToan TT
+                LEFT JOIN DonHang DH ON TT.MaDH = DH.MaDH
+                LEFT JOIN TraSach TS ON TT.MaPhat = TS.MaTra
+                LEFT JOIN MuonSach MS ON TS.MaMuon = MS.MaMuon
+                WHERE (TT.LoaiGiaoDich = 'DonHang' AND DH.MaDG = @MaDG)
+                   OR (TT.LoaiGiaoDich = 'PhiPhat' AND MS.MaDG = @MaDG)
+                ORDER BY TT.NgayThanhToan DESC
+            `);
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ message: "Lỗi server." });
+    }
+};
+
 exports.updateTransactionStatus = async (req, res) => {
     const { maTT, trangThai } = req.body;
     try {
@@ -197,53 +253,8 @@ exports.updateTransactionStatus = async (req, res) => {
             .input('MaTT', sql.VarChar, maTT)
             .input('TrangThai', sql.NVarChar, trangThai)
             .query("UPDATE ThanhToan SET TrangThai = @TrangThai WHERE MaTT = @MaTT");
-        res.json({ message: "Cập nhật trạng thái thành công" });
+        res.json({ message: "Thành công" });
     } catch (err) {
-        res.status(500).json({ message: "Lỗi cập nhật trạng thái" });
-    }
-};
-// ============================================================
-// 4. LẤY LỊCH SỬ GIAO DỊCH CỦA TÔI (CHO USER) - BỔ SUNG THÊM
-// ============================================================
-exports.getMyTransactions = async (req, res) => {
-    // Middleware authenticateToken đã gắn MaDG vào req.user
-    const { MaDG } = req.user;
-
-    if (!MaDG) {
-        return res.status(403).json({ message: "Tài khoản này không phải là Độc giả hợp lệ." });
-    }
-
-    try {
-        const pool = await sql.connect(config);
-        
-        // Query trực tiếp sử dụng MaDG từ token
-        const result = await pool.request()
-            .input('MaDG', sql.VarChar, MaDG)
-            .query(`
-                SELECT 
-                    TT.MaTT, 
-                    TT.MaGiaoDich,
-                    TT.SoTien, 
-                    TT.TrangThai, 
-                    TT.NgayThanhToan, 
-                    TT.LoaiGiaoDich, 
-                    TT.NoiDung,
-                    COALESCE(TT.MaDH, TT.MaPhat) AS MaThamChieu
-                FROM ThanhToan TT
-                LEFT JOIN DonHang DH ON TT.MaDH = DH.MaDH
-                LEFT JOIN TraSach TS ON TT.MaPhat = TS.MaTra
-                LEFT JOIN MuonSach MS ON TS.MaMuon = MS.MaMuon
-                WHERE 
-                    (TT.LoaiGiaoDich = 'DonHang' AND DH.MaDG = @MaDG)
-                    OR 
-                    (TT.LoaiGiaoDich = 'PhiPhat' AND MS.MaDG = @MaDG)
-                ORDER BY TT.NgayThanhToan DESC
-            `);
-
-        res.json(result.recordset);
-
-    } catch (err) {
-        console.error("Lỗi lấy lịch sử giao dịch cá nhân:", err);
-        res.status(500).json({ message: "Lỗi server khi tải lịch sử." });
+        res.status(500).json({ message: "Lỗi cập nhật" });
     }
 };

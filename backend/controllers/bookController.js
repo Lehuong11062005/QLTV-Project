@@ -180,25 +180,30 @@ exports.getSachById = async (req, res) => {
 
 // 3. Thêm sách mới (Admin)
 exports.createBook = async (req, res) => {
-    const { tenSach, maTG, maDM, giaBan, soLuongTon, namXuatBan, moTa, anhMinhHoa, donViTinh } = req.body;
-
-    // Kiểm tra dữ liệu đầu vào (Validation cơ bản)
-    if (!tenSach || !maTG || !maDM) {
-        return res.status(400).json({ message: 'Tên sách, Tác giả và Danh mục là bắt buộc.' });
-    }
-
     try {
+        // 👇 LOGIC QUAN TRỌNG:
+        // Nếu có upload file -> Lấy link từ Cloudinary (req.file.path)
+        // Nếu không -> Lấy link ảnh dạng text (nếu người dùng paste link) hoặc để null
+        const imageUrl = req.file ? req.file.path : req.body.anhMinhHoa || null;
+
+        const { tenSach, maTG, maDM, giaBan, soLuongTon, namXuatBan, moTa, donViTinh } = req.body;
+
+        // Validation
+        if (!tenSach || !maTG || !maDM) {
+            return res.status(400).json({ message: 'Tên sách, Tác giả và Danh mục là bắt buộc.' });
+        }
+
         const pool = await sql.connect(config);
         const request = pool.request();
         const maSach = await getUniqueId(request, 'S', 'Sach', 'MaSach');
-        const tinhTrang = soLuongTon > 0 ? 'Còn' : 'Hết';
+        const tinhTrang = (parseInt(soLuongTon) || 0) > 0 ? 'Còn' : 'Hết';
 
         await request
             .input('MaSach', sql.VarChar, maSach)
             .input('TenSach', sql.NVarChar, tenSach)
             .input('MoTa', sql.NVarChar, moTa || null)
             .input('NamXuatBan', sql.Int, namXuatBan || null)
-            .input('AnhMinhHoa', sql.NVarChar, anhMinhHoa || null)
+            .input('AnhMinhHoa', sql.NVarChar, imageUrl) // Lưu link ảnh vào DB
             .input('GiaBan', sql.Decimal, giaBan || 0)
             .input('DonViTinh', sql.NVarChar, donViTinh || 'Cuốn')
             .input('SoLuongTon', sql.Int, soLuongTon || 0)
@@ -210,7 +215,7 @@ exports.createBook = async (req, res) => {
                 VALUES (@MaSach, @TenSach, @MoTa, @NamXuatBan, @AnhMinhHoa, @GiaBan, @DonViTinh, @SoLuongTon, @TinhTrang, @MaTG, @MaDM)
             `);
 
-        res.status(201).json({ code: 200, message: 'Thêm sách thành công.', data: { maSach } });
+        res.status(201).json({ code: 200, message: 'Thêm sách thành công.', data: { maSach, imageUrl } });
     } catch (err) {
         console.error('Lỗi thêm sách:', err);
         res.status(500).json({ message: 'Lỗi server khi thêm sách.' });
@@ -219,53 +224,76 @@ exports.createBook = async (req, res) => {
 
 // 4. Cập nhật sách (Admin)
 exports.updateBook = async (req, res) => {
-    const { id } = req.params; // MaSach lấy từ URL
-    const { tenSach, maTG, maDM, giaBan, soLuongTon, namXuatBan, moTa, anhMinhHoa, donViTinh, tinhTrang } = req.body;
+    const { id } = req.params; // MaSach từ URL
+
+    // 1. Xử lý ảnh: Nếu có file mới thì dùng, không thì lấy text cũ
+    const imageUrl = req.file ? req.file.path : req.body.anhMinhHoa;
+
+    // 2. Lấy dữ liệu từ body (FormData gửi lên toàn bộ là String)
+    const { tenSach, maTG, maDM, giaBan, soLuongTon, namXuatBan, moTa, donViTinh, tinhTrang } = req.body;
 
     try {
         const pool = await sql.connect(config);
         const request = pool.request();
-        let updateFields = [];
-        
         request.input('MaSach', sql.VarChar, id);
-
-        // Xây dựng câu query động (chỉ update trường có gửi lên)
-        if (tenSach !== undefined) { updateFields.push('TenSach = @TenSach'); request.input('TenSach', sql.NVarChar, tenSach); }
-        if (moTa !== undefined) { updateFields.push('MoTa = @MoTa'); request.input('MoTa', sql.NVarChar, moTa); }
-        if (namXuatBan !== undefined) { updateFields.push('NamXuatBan = @NamXuatBan'); request.input('NamXuatBan', sql.Int, namXuatBan); }
-        if (anhMinhHoa !== undefined) { updateFields.push('AnhMinhHoa = @AnhMinhHoa'); request.input('AnhMinhHoa', sql.NVarChar, anhMinhHoa); }
-        if (giaBan !== undefined) { updateFields.push('GiaBan = @GiaBan'); request.input('GiaBan', sql.Decimal, giaBan); }
-        if (donViTinh !== undefined) { updateFields.push('DonViTinh = @DonViTinh'); request.input('DonViTinh', sql.NVarChar, donViTinh); }
-        if (maTG !== undefined) { updateFields.push('MaTG = @MaTG'); request.input('MaTG', sql.VarChar, maTG); }
-        if (maDM !== undefined) { updateFields.push('MaDM = @MaDM'); request.input('MaDM', sql.VarChar, maDM); }
-        if (tinhTrang !== undefined) { updateFields.push('TinhTrang = @TinhTrang'); request.input('TinhTrang', sql.NVarChar, tinhTrang); }
         
-        if (soLuongTon !== undefined) {
-            updateFields.push('SoLuongTon = @SoLuongTon');
-            request.input('SoLuongTon', sql.Int, soLuongTon);
-            // Tự động cập nhật tình trạng nếu số lượng về 0
-            if (soLuongTon <= 0 && tinhTrang === undefined) {
-                 updateFields.push("TinhTrang = 'Hết'");
-            } else if (soLuongTon > 0 && tinhTrang === undefined) {
-                 updateFields.push("TinhTrang = 'Còn'");
+        let updateFields = [];
+
+        // Hàm phụ trợ: Chỉ thêm vào SQL nếu dữ liệu hợp lệ (Không null, không undefined, không rỗng)
+        const addInput = (key, val, type, fieldName) => {
+            if (val !== undefined && val !== 'undefined' && val !== null && val !== '') {
+                updateFields.push(`${fieldName} = @${key}`);
+                request.input(key, type, val);
             }
+        };
+
+        // --- XỬ LÝ DỮ LIỆU AN TOÀN ---
+        
+        addInput('TenSach', tenSach, sql.NVarChar, 'TenSach');
+        addInput('MoTa', moTa, sql.NVarChar, 'MoTa');
+        
+        // SỐ NGUYÊN: Phải parse sang Int, nếu lỗi NaN thì bỏ qua
+        if (namXuatBan && !isNaN(parseInt(namXuatBan))) {
+            addInput('NamXuatBan', parseInt(namXuatBan), sql.Int, 'NamXuatBan');
         }
 
+        // SỐ THỰC (TIỀN): Phải parse sang Float
+        if (giaBan && !isNaN(parseFloat(giaBan))) {
+            addInput('GiaBan', parseFloat(giaBan), sql.Decimal, 'GiaBan');
+        }
+        
+        // SỐ NGUYÊN: Tồn kho
+        if (soLuongTon !== undefined && soLuongTon !== '' && !isNaN(parseInt(soLuongTon))) {
+            addInput('SoLuongTon', parseInt(soLuongTon), sql.Int, 'SoLuongTon');
+        }
+
+        addInput('DonViTinh', donViTinh, sql.NVarChar, 'DonViTinh');
+        addInput('MaTG', maTG, sql.VarChar, 'MaTG');
+        addInput('MaDM', maDM, sql.VarChar, 'MaDM');
+        addInput('TinhTrang', tinhTrang, sql.NVarChar, 'TinhTrang');
+        
+        // Xử lý ảnh riêng
+        if (imageUrl && imageUrl !== 'undefined' && imageUrl !== 'null') {
+            updateFields.push('AnhMinhHoa = @AnhMinhHoa');
+            request.input('AnhMinhHoa', sql.NVarChar, imageUrl);
+        }
+
+        // Kiểm tra nếu không có gì để update
         if (updateFields.length === 0) {
-            return res.status(400).json({ message: 'Không có dữ liệu để cập nhật.' });
+            return res.status(400).json({ message: 'Không có dữ liệu hợp lệ để cập nhật.' });
         }
 
-        const updateQuery = `UPDATE Sach SET ${updateFields.join(', ')} WHERE MaSach = @MaSach`;
-        const result = await request.query(updateQuery);
-
-        if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: 'Không tìm thấy sách.' });
-        }
+        const query = `UPDATE Sach SET ${updateFields.join(', ')} WHERE MaSach = @MaSach`;
+        
+        // Thực thi query
+        await request.query(query);
 
         res.status(200).json({ code: 200, message: 'Cập nhật sách thành công.' });
+
     } catch (err) {
-        console.error('Lỗi cập nhật sách:', err);
-        res.status(500).json({ message: 'Lỗi server khi cập nhật sách.' });
+        // 👇 Quan trọng: Log lỗi chi tiết ra Terminal của VS Code để debug
+        console.error('❌ Lỗi Update Sách:', err); 
+        res.status(500).json({ message: 'Lỗi server: ' + err.message });
     }
 };
 
