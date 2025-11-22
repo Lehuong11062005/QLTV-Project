@@ -1,49 +1,24 @@
--- ============================================================
--- CSDL: QUANLYTHUVIEN (HOÀN THIỆN NHẤT)
--- Bổ sung Mã cá biệt, Phí phạt, Vận chuyển để đảm bảo hoạt động
--- ============================================================
--- Lưu ý còn một bảng active token cho kích hoạt tài khoản có thể thêm sau
--- BƯỚC 1: XÓA CSDL CŨ (NẾU TỒN TẠI)
-IF DB_ID(N'QuanLyThuVien') IS NOT NULL
-BEGIN
-    USE master;
-    ALTER DATABASE QuanLyThuVien SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-    DROP DATABASE QuanLyThuVien;
-END
+-- 1. TẠO DATABASE VÀ SỬ DỤNG
+CREATE DATABASE QLTV;
+GO
+USE QLTV;
 GO
 
--- BƯỚC 2: TẠO CSDL MỚI
-CREATE DATABASE QuanLyThuVien;
-GO
+-- =============================================
+-- I. NHÓM TÀI KHOẢN & NGƯỜI DÙNG (Tạo trước để làm gốc)
+-- =============================================
 
-USE QuanLyThuVien;
-GO
-
--- ============================================================
--- BƯỚC 3: BẢNG TÀI KHOẢN VÀ NGƯỜI DÙNG
--- ============================================================
-
+-- 1. Bảng Tài Khoản (Gốc của mọi user)
 CREATE TABLE TaiKhoan (
     MaTK VARCHAR(10) PRIMARY KEY,
-    TenDangNhap VARCHAR(50) UNIQUE NOT NULL, -- Thường là Email
-    MatKhau VARCHAR(255) NOT NULL, -- Cần được mã hóa (hashed)
+    TenDangNhap VARCHAR(50) NOT NULL UNIQUE,
+    MatKhau VARCHAR(255) NOT NULL,
     LoaiTK VARCHAR(20), -- Admin, ThuThu, DocGia
-    TrangThai VARCHAR(20) DEFAULT 'HoatDong', -- HoatDong, BiKhoa (Dùng cho cả tài khoản bị khóa do nợ phí)
+    TrangThai VARCHAR(20), -- HoatDong, BiKhoa, ChoXacThuc
     NgayTao DATETIME DEFAULT GETDATE()
 );
-GO
 
-CREATE TABLE ThuThu (
-    MaTT VARCHAR(10) PRIMARY KEY,
-    HoTen NVARCHAR(100) NOT NULL,
-    SDT VARCHAR(15),
-    Email VARCHAR(100),
-    MaTK VARCHAR(10) UNIQUE,
-    Role NVARCHAR(50) DEFAULT N'ThuThu', -- QuanLy (Super Admin) hoặc ThuThu (Vận hành)
-    FOREIGN KEY (MaTK) REFERENCES TaiKhoan(MaTK)
-);
-GO
-
+-- 2. Bảng Độc Giả
 CREATE TABLE DocGia (
     MaDG VARCHAR(10) PRIMARY KEY,
     HoTen NVARCHAR(100) NOT NULL,
@@ -51,228 +26,236 @@ CREATE TABLE DocGia (
     SDT VARCHAR(15),
     Email VARCHAR(100) UNIQUE,
     NgayHetHanThe DATE,
-    TrangThaiThe NVARCHAR(50) DEFAULT N'ConHan',
-    MaTK VARCHAR(10) UNIQUE,
+    TrangThaiThe NVARCHAR(50), -- ConHan, ChoKichHoat
+    MaTK VARCHAR(10) UNIQUE, -- 1 Tài khoản chỉ gắn 1 Độc giả
+    TongPhatChuaThanhToan DECIMAL(18, 0) DEFAULT 0,
     FOREIGN KEY (MaTK) REFERENCES TaiKhoan(MaTK)
 );
-GO
 
--- BỔ SUNG: Theo dõi Phí Phạt chưa thanh toán
-ALTER TABLE DocGia
-ADD TongPhatChuaThanhToan DECIMAL(18, 0) DEFAULT 0;
-GO
+-- 3. Bảng Thủ Thư (Nhân viên)
+CREATE TABLE ThuThu (
+    MaTT VARCHAR(10) PRIMARY KEY,
+    HoTen NVARCHAR(100) NOT NULL,
+    SDT VARCHAR(15),
+    Email VARCHAR(100),
+    MaTK VARCHAR(10) UNIQUE,
+    Role NVARCHAR(50), -- QuanLy, ThuThu
+    FOREIGN KEY (MaTK) REFERENCES TaiKhoan(MaTK)
+);
 
--- BỔ SUNG: Bảng lưu trữ Token đặt lại Mật khẩu
+-- 4. Token Kích hoạt tài khoản
+CREATE TABLE ActivationToken (
+    MaTK VARCHAR(10) PRIMARY KEY,
+    Token VARCHAR(255) NOT NULL,
+    Expires DATETIME NOT NULL,
+    MaDG VARCHAR(10), -- Link đến độc giả nếu cần tracking
+    FOREIGN KEY (MaTK) REFERENCES TaiKhoan(MaTK)
+);
+
+-- 5. Token Quên mật khẩu
 CREATE TABLE ResetToken (
     MaTK VARCHAR(10) PRIMARY KEY,
     Token VARCHAR(255) NOT NULL,
-    NgayHetHan DATETIME NOT NULL, -- Token phải có thời hạn ngắn (VD: 30 phút)
+    NgayHetHan DATETIME NOT NULL,
     FOREIGN KEY (MaTK) REFERENCES TaiKhoan(MaTK)
 );
-GO
 
--- ============================================================
--- BƯỚC 4: BẢNG DANH MỤC, TÁC GIẢ, SÁCH & BẢN SAO
--- ============================================================
+-- =============================================
+-- II. NHÓM SÁCH & KHO (Tạo tiếp theo)
+-- =============================================
 
+-- 6. Tác Giả
 CREATE TABLE TacGia (
     MaTG VARCHAR(10) PRIMARY KEY,
     TenTG NVARCHAR(100) NOT NULL
 );
-GO
 
+-- 7. Danh Mục
 CREATE TABLE DanhMuc (
     MaDM VARCHAR(10) PRIMARY KEY,
     TenDM NVARCHAR(100) NOT NULL
 );
-GO
 
--- Bảng Sách (Thông tin chung của sách)
+-- 8. Sách (Thông tin chung)
 CREATE TABLE Sach (
     MaSach VARCHAR(10) PRIMARY KEY,
     TenSach NVARCHAR(200) NOT NULL,
     MoTa NVARCHAR(500),
     NamXuatBan INT,
     AnhMinhHoa NVARCHAR(255),
-    GiaBan DECIMAL(18, 0), -- Giá bán chung (áp dụng cho sách bán)
+    GiaBan DECIMAL(18, 0),
     DonViTinh NVARCHAR(20),
-    SoLuongTon INT NOT NULL CHECK (SoLuongTon >= 0), -- Tổng tồn kho (Bán + Mượn)
-    TinhTrang NVARCHAR(50) DEFAULT N'Còn',
+    SoLuongTon INT DEFAULT 0,
+    TinhTrang NVARCHAR(50), -- Con, Het
     MaTG VARCHAR(10),
     MaDM VARCHAR(10),
     FOREIGN KEY (MaTG) REFERENCES TacGia(MaTG),
     FOREIGN KEY (MaDM) REFERENCES DanhMuc(MaDM)
 );
-GO
 
--- BỔ SUNG BẮT BUỘC: Bảng BanSao_ThuVien (Quản lý Mã cá biệt cho sách cho MƯỢN)
+-- 9. Bản Sao Thư Viện (Quản lý từng cuốn sách cụ thể trên kệ)
 CREATE TABLE BanSao_ThuVien (
-    MaBanSao VARCHAR(15) PRIMARY KEY, -- MÃ CÁ BIỆT (Asset Tag/Barcode)
+    MaBanSao VARCHAR(15) PRIMARY KEY, -- Mã vạch/Mã cá biệt
     MaSach VARCHAR(10),
     ViTriKe NVARCHAR(20),
-    TrangThaiBanSao NVARCHAR(50) DEFAULT N'SanSang', -- SanSang, DangMuon, HuHong, Mat
+    TrangThaiBanSao NVARCHAR(50), -- SanSang, DangMuon, HuHong, Mat
     FOREIGN KEY (MaSach) REFERENCES Sach(MaSach)
 );
-GO
 
--- ============================================================
--- BƯỚC 5: GIỎ HÀNG MUA
--- ============================================================
+-- =============================================
+-- III. NHÓM MƯỢN TRẢ (Core Feature)
+-- =============================================
 
-CREATE TABLE GioHang (
-    MaGH VARCHAR(10) PRIMARY KEY,
-    MaDG VARCHAR(10) UNIQUE,
-    TamTinh DECIMAL(18, 0) DEFAULT 0,
-    FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG)
-);
-
-CREATE TABLE GioHang_Sach (
-    MaGH VARCHAR(10),
-    MaSach VARCHAR(10),
-    SoLuong INT NOT NULL CHECK (SoLuong > 0),
-    PRIMARY KEY (MaGH, MaSach),
-    FOREIGN KEY (MaGH) REFERENCES GioHang(MaGH),
-    FOREIGN KEY (MaSach) REFERENCES Sach(MaSach)
-);
-GO
-
--- ============================================================
--- BƯỚC 6: ĐƠN HÀNG MUA SÁCH (Bổ sung Vận chuyển)
--- ============================================================
-CREATE TABLE DonHang (
-    MaDH VARCHAR(10) PRIMARY KEY,
-    MaDG VARCHAR(10),
+-- 10. Giỏ Mượn (Lưu sách độc giả chọn trước khi tạo phiếu mượn)
+CREATE TABLE GioMuon (
+    MaGM VARCHAR(10) PRIMARY KEY,
+    MaDG VARCHAR(10) NOT NULL,
     NgayTao DATETIME DEFAULT GETDATE(),
-    TongTien DECIMAL(18, 0) DEFAULT 0,
-    DiaChiGiaoHang NVARCHAR(255),
-    TrangThai NVARCHAR(50) DEFAULT N'ChoDuyet',
-    HinhThucThanhToan NVARCHAR(50),
-    TrangThaiThanhToan NVARCHAR(50) DEFAULT N'ChuaThanhToan',
-    -- Loại bỏ MaChuyenKhoan
+    TongSoLuong INT,
     FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG)
 );
-GO
 
--- BỔ SUNG BẮT BUỘC: Thông tin Vận chuyển vào DonHang
-ALTER TABLE DonHang
-    ADD PhiVanChuyen DECIMAL(18, 0) DEFAULT 0,
-    MaVanDon VARCHAR(50);
-GO
-
-CREATE TABLE DonHang_Sach (
-    MaDH_Sach INT IDENTITY(1,1) PRIMARY KEY,
-    MaDH VARCHAR(10),
+-- 11. Chi tiết Giỏ Mượn
+CREATE TABLE GioMuon_Sach (
+    MaGM VARCHAR(10),
     MaSach VARCHAR(10),
-    SoLuong INT NOT NULL CHECK (SoLuong > 0),
-    DonGia DECIMAL(18, 0) NOT NULL,
-    FOREIGN KEY (MaDH) REFERENCES DonHang(MaDH),
+    SoLuong INT NOT NULL,
+    PRIMARY KEY (MaGM, MaSach),
+    FOREIGN KEY (MaGM) REFERENCES GioMuon(MaGM),
     FOREIGN KEY (MaSach) REFERENCES Sach(MaSach)
 );
-GO
 
--- ============================================================
--- BƯỚC 7: THANH TOÁN (Bổ sung Phân loại giao dịch)
--- ============================================================
-CREATE TABLE ThanhToan (
-    MaTT VARCHAR(10) PRIMARY KEY,
-    MaDH VARCHAR(10), 
-    MaPhat VARCHAR(10), -- Mã Phiếu phạt (dùng cho thanh toán phí phạt)
-    PhuongThuc NVARCHAR(50), 
-    SoTien DECIMAL(18,0),
-    TrangThai NVARCHAR(50) DEFAULT N'KhoiTao',
-    MaGiaoDich VARCHAR(100),
-    NgayThanhToan DATETIME DEFAULT GETDATE(),
-    NoiDung NVARCHAR(255),
-    LoaiGiaoDich NVARCHAR(20) NOT NULL DEFAULT N'DonHang', -- BỔ SUNG: Phân loại: DonHang, PhiPhat
-    FOREIGN KEY (MaDH) REFERENCES DonHang(MaDH)
-    -- Giả định MaPhat sẽ là FK tới bảng Phat (nếu có)
-);
-GO
-
--- ============================================================
--- BƯỚC 8: MƯỢN / TRẢ SÁCH (Sửa để dùng Mã cá biệt)
--- ============================================================
-
+-- 12. Phiếu Mượn Sách
 CREATE TABLE MuonSach (
     MaMuon VARCHAR(10) PRIMARY KEY,
     MaDG VARCHAR(10),
     MaTT_ChoMuon VARCHAR(10),
-    NgayMuon DATE DEFAULT GETDATE(),
+    NgayMuon DATE,
     HanTra DATE,
-    TrangThai NVARCHAR(50) DEFAULT N'ChoDuyet', -- ChoDuyet, DaDuyet, DaTraHet, QuaHan
+    TrangThai NVARCHAR(50), -- ChoDuyet, DaDuyet, DaTraHet, QuaHan
     FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG),
     FOREIGN KEY (MaTT_ChoMuon) REFERENCES ThuThu(MaTT)
 );
 
--- SỬA ĐỔI BẮT BUỘC: Dùng MaBanSao thay cho MaSach
+-- 13. Chi tiết Mượn (Mượn cuốn nào, bản sao nào)
 CREATE TABLE MuonSach_Sach (
     MaMuon VARCHAR(10),
-    MaBanSao VARCHAR(15), -- Dùng Mã cá biệt
+    MaBanSao VARCHAR(15),
     PRIMARY KEY (MaMuon, MaBanSao),
     FOREIGN KEY (MaMuon) REFERENCES MuonSach(MaMuon),
     FOREIGN KEY (MaBanSao) REFERENCES BanSao_ThuVien(MaBanSao)
 );
-GO
 
+-- 14. Phiếu Trả Sách
 CREATE TABLE TraSach (
     MaTra VARCHAR(10) PRIMARY KEY,
-    MaMuon VARCHAR(10) UNIQUE,
+    MaMuon VARCHAR(10) UNIQUE, -- 1 Phiếu mượn chỉ có 1 phiếu trả tổng (hoặc n lần trả)
     MaTT_NhanTra VARCHAR(10),
-    NgayTra DATE DEFAULT GETDATE(),
-    TongTienPhat DECIMAL(18, 0) DEFAULT 0,
+    NgayTra DATE,
+    TongTienPhat DECIMAL(18, 0),
     FOREIGN KEY (MaMuon) REFERENCES MuonSach(MaMuon),
     FOREIGN KEY (MaTT_NhanTra) REFERENCES ThuThu(MaTT)
 );
 
--- SỬA ĐỔI BẮT BUỘC: Dùng MaBanSao thay cho MaSach và Bổ sung Tiền Đền bù
+-- 15. Chi tiết Trả (Tình trạng từng cuốn khi trả)
 CREATE TABLE TraSach_Sach (
     MaTra VARCHAR(10),
-    MaBanSao VARCHAR(15), -- Dùng Mã cá biệt
-    TienPhatQuaHan DECIMAL(18, 0) DEFAULT 0, -- Tách riêng tiền phạt quá hạn
-    TienDenBu DECIMAL(18, 0) DEFAULT 0, -- BỔ SUNG: Tiền đền bù nếu sách hỏng/mất
+    MaBanSao VARCHAR(15),
+    TienPhatQuaHan DECIMAL(18, 0),
+    TienDenBu DECIMAL(18, 0),
     LyDoPhat NVARCHAR(255),
     PRIMARY KEY (MaTra, MaBanSao),
     FOREIGN KEY (MaTra) REFERENCES TraSach(MaTra),
     FOREIGN KEY (MaBanSao) REFERENCES BanSao_ThuVien(MaBanSao)
 );
-GO
 
--- ============================================================
--- BƯỚC 9: PHẢN HỒI NGƯỜI DÙNG & ĐÁNH GIÁ SÁCH
--- ============================================================
+-- =============================================
+-- IV. NHÓM MUA BÁN (E-Commerce Feature)
+-- =============================================
 
+-- 16. Giỏ Hàng (Mua sách)
+CREATE TABLE GioHang (
+    MaGH VARCHAR(10) PRIMARY KEY,
+    MaDG VARCHAR(10) UNIQUE, -- Mỗi độc giả 1 giỏ hàng
+    TamTinh DECIMAL(18, 0),
+    FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG)
+);
+
+-- 17. Chi tiết Giỏ Hàng
+CREATE TABLE GioHang_Sach (
+    MaGH VARCHAR(10),
+    MaSach VARCHAR(10),
+    SoLuong INT NOT NULL,
+    PRIMARY KEY (MaGH, MaSach),
+    FOREIGN KEY (MaGH) REFERENCES GioHang(MaGH),
+    FOREIGN KEY (MaSach) REFERENCES Sach(MaSach)
+);
+
+-- 18. Đơn Hàng
+CREATE TABLE DonHang (
+    MaDH VARCHAR(10) PRIMARY KEY,
+    MaDG VARCHAR(10),
+    NgayTao DATETIME DEFAULT GETDATE(),
+    TongTien DECIMAL(18, 0),
+    DiaChiGiaoHang NVARCHAR(255),
+    TrangThai NVARCHAR(50), -- ChoDuyet, DangGiao, HoanThanh
+    HinhThucThanhToan NVARCHAR(50),
+    TrangThaiThanhToan NVARCHAR(50), -- ChuaThanhToan, DaThanhToan
+    PhiVanChuyen DECIMAL(18, 0),
+    MaVanDon VARCHAR(50),
+    FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG)
+);
+
+-- 19. Chi tiết Đơn Hàng
+CREATE TABLE DonHang_Sach (
+    MaDH_Sach INT IDENTITY(1,1) PRIMARY KEY,
+    MaDH VARCHAR(10),
+    MaSach VARCHAR(10),
+    SoLuong INT NOT NULL,
+    DonGia DECIMAL(18, 0), -- Lưu giá tại thời điểm mua
+    FOREIGN KEY (MaDH) REFERENCES DonHang(MaDH),
+    FOREIGN KEY (MaSach) REFERENCES Sach(MaSach)
+);
+
+-- 20. Thanh Toán
+CREATE TABLE ThanhToan (
+    MaTT VARCHAR(10) PRIMARY KEY, -- Mã thanh toán
+    MaDH VARCHAR(10),
+    MaPhat VARCHAR(10), -- Nếu thanh toán phạt (Optional)
+    PhuongThuc NVARCHAR(50),
+    SoTien DECIMAL(18, 0),
+    TrangThai NVARCHAR(50), -- KhoiTao, HoanThanh, Loi
+    MaGiaoDich VARCHAR(100), -- ID từ VNPay/Momo
+    NgayThanhToan DATETIME,
+    NoiDung NVARCHAR(255),
+    LoaiGiaoDich NVARCHAR(20), -- DonHang, PhiPhat
+    FOREIGN KEY (MaDH) REFERENCES DonHang(MaDH)
+);
+
+-- =============================================
+-- V. NHÓM TƯƠNG TÁC & PHẢN HỒI
+-- =============================================
+
+-- 21. Phản Hồi (Khiếu nại/Góp ý hệ thống)
 CREATE TABLE PhanHoi (
     MaPH VARCHAR(10) PRIMARY KEY,
     MaDG VARCHAR(10) NOT NULL,
     NoiDung NVARCHAR(1000) NOT NULL,
     NgayGui DATETIME DEFAULT GETDATE(),
-    TrangThai NVARCHAR(50) DEFAULT N'Chưa xử lý', -- Dùng cho phản hồi dịch vụ
+    TrangThai NVARCHAR(50), -- Chưa xử lý, Đã xử lý
     MaTT_XuLy VARCHAR(10),
     FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG),
     FOREIGN KEY (MaTT_XuLy) REFERENCES ThuThu(MaTT)
 );
-GO
 
--- BỔ SUNG: Bảng Đánh giá/Review sách
+-- 22. Đánh Giá Sách (Review sách)
 CREATE TABLE DanhGiaSach (
     MaDGia INT IDENTITY(1,1) PRIMARY KEY,
     MaSach VARCHAR(10) NOT NULL,
     MaDG VARCHAR(10) NOT NULL,
-    DiemDanhGia INT CHECK (DiemDanhGia BETWEEN 1 AND 5), -- 1 đến 5 sao
+    DiemDanhGia INT CHECK (DiemDanhGia >= 1 AND DiemDanhGia <= 5),
     NoiDung NVARCHAR(1000),
     NgayDanhGia DATETIME DEFAULT GETDATE(),
     FOREIGN KEY (MaSach) REFERENCES Sach(MaSach),
-    FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG),
-    UNIQUE (MaSach, MaDG) -- Mỗi độc giả chỉ đánh giá 1 lần trên 1 cuốn
+    FOREIGN KEY (MaDG) REFERENCES DocGia(MaDG)
 );
-GO
-
--- ============================================================
--- KIỂM TRA KẾT QUẢ
--- ============================================================
-
-SELECT TABLE_NAME
-FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_TYPE = 'BASE TABLE'
-ORDER BY TABLE_NAME;
-GO
