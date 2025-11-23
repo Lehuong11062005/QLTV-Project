@@ -180,45 +180,81 @@ exports.getSachById = async (req, res) => {
 
 // 3. Thêm sách mới (Admin)
 exports.createBook = async (req, res) => {
-    try {
-        // 👇 LOGIC QUAN TRỌNG:
-        // Nếu có upload file -> Lấy link từ Cloudinary (req.file.path)
-        // Nếu không -> Lấy link ảnh dạng text (nếu người dùng paste link) hoặc để null
-        const imageUrl = req.file ? req.file.path : req.body.anhMinhHoa || null;
+    // 1. Kết nối Pool
+    const pool = await sql.connect(/* config */); 
+    // Lưu ý: Nếu bạn dùng global pool thì chỉ cần const pool = await sql.connect();
+    
+    // 2. Khởi tạo Transaction
+    const transaction = new sql.Transaction(pool);
 
+    try {
+        // Bắt đầu giao dịch
+        await transaction.begin();
+
+        // --- Xử lý dữ liệu đầu vào ---
+        const imageUrl = req.file ? req.file.path : req.body.anhMinhHoa || null;
         const { tenSach, maTG, maDM, giaBan, soLuongTon, namXuatBan, moTa, donViTinh } = req.body;
 
-        // Validation
+        // Validation cơ bản
         if (!tenSach || !maTG || !maDM) {
+            // Nếu lỗi input, rollback ngay (dù chưa làm gì DB, nhưng để clear transaction)
+            await transaction.rollback(); 
             return res.status(400).json({ message: 'Tên sách, Tác giả và Danh mục là bắt buộc.' });
         }
 
-        const pool = await sql.connect(config);
-        const request = pool.request();
-        const maSach = await getUniqueId(request, 'S', 'Sach', 'MaSach');
-        const tinhTrang = (parseInt(soLuongTon) || 0) > 0 ? 'Còn' : 'Hết';
+        // --- Logic nghiệp vụ trong Transaction ---
+        
+        // A. Tạo ID Sách (Truyền transaction vào để check trùng an toàn)
+        //  MaSach: varchar(10)
+        const maSach = await getUniqueId(transaction, 'S', 'Sach', 'MaSach');
+
+        // B. Tính tình trạng
+        // [cite: 78] SoLuongTon: int, [cite: 79] TinhTrang: nvarchar(50)
+        const slTon = parseInt(soLuongTon) || 0;
+        const tinhTrang = slTon > 0 ? 'Còn' : 'Hết';
+
+        // C. Thực hiện Insert
+        // Lưu ý: Phải dùng new sql.Request(transaction)
+        const request = new sql.Request(transaction);
 
         await request
-            .input('MaSach', sql.VarChar, maSach)
-            .input('TenSach', sql.NVarChar, tenSach)
-            .input('MoTa', sql.NVarChar, moTa || null)
-            .input('NamXuatBan', sql.Int, namXuatBan || null)
-            .input('AnhMinhHoa', sql.NVarChar, imageUrl) // Lưu link ảnh vào DB
-            .input('GiaBan', sql.Decimal, giaBan || 0)
-            .input('DonViTinh', sql.NVarChar, donViTinh || 'Cuốn')
-            .input('SoLuongTon', sql.Int, soLuongTon || 0)
-            .input('TinhTrang', sql.NVarChar, tinhTrang)
-            .input('MaTG', sql.VarChar, maTG)
-            .input('MaDM', sql.VarChar, maDM)
+            .input('MaSach', sql.VarChar, maSach)          // 
+            .input('TenSach', sql.NVarChar, tenSach)       // [cite: 72]
+            .input('MoTa', sql.NVarChar, moTa || null)     // [cite: 73]
+            .input('NamXuatBan', sql.Int, namXuatBan || null) // [cite: 74]
+            .input('AnhMinhHoa', sql.NVarChar, imageUrl)   // [cite: 75]
+            .input('GiaBan', sql.Decimal, giaBan || 0)     // [cite: 76]
+            .input('DonViTinh', sql.NVarChar, donViTinh || 'Cuốn') // [cite: 77]
+            .input('SoLuongTon', sql.Int, slTon)           // [cite: 78]
+            .input('TinhTrang', sql.NVarChar, tinhTrang)   // [cite: 79]
+            .input('MaTG', sql.VarChar, maTG)              // [cite: 80]
+            .input('MaDM', sql.VarChar, maDM)              // [cite: 81]
             .query(`
-                INSERT INTO Sach (MaSach, TenSach, MoTa, NamXuatBan, AnhMinhHoa, GiaBan, DonViTinh, SoLuongTon, TinhTrang, MaTG, MaDM)
-                VALUES (@MaSach, @TenSach, @MoTa, @NamXuatBan, @AnhMinhHoa, @GiaBan, @DonViTinh, @SoLuongTon, @TinhTrang, @MaTG, @MaDM)
+                INSERT INTO Sach (
+                    MaSach, TenSach, MoTa, NamXuatBan, AnhMinhHoa, 
+                    GiaBan, DonViTinh, SoLuongTon, TinhTrang, MaTG, MaDM
+                )
+                VALUES (
+                    @MaSach, @TenSach, @MoTa, @NamXuatBan, @AnhMinhHoa, 
+                    @GiaBan, @DonViTinh, @SoLuongTon, @TinhTrang, @MaTG, @MaDM
+                )
             `);
 
-        res.status(201).json({ code: 200, message: 'Thêm sách thành công.', data: { maSach, imageUrl } });
+        // 3. Xác nhận giao dịch (Lưu vào DB)
+        await transaction.commit();
+
+        res.status(201).json({ 
+            code: 200, 
+            message: 'Thêm sách thành công.', 
+            data: { maSach, tenSach, imageUrl } 
+        });
+
     } catch (err) {
+        // 4. Hoàn tác nếu có lỗi
+        if (transaction) await transaction.rollback();
+        
         console.error('Lỗi thêm sách:', err);
-        res.status(500).json({ message: 'Lỗi server khi thêm sách.' });
+        res.status(500).json({ message: 'Lỗi server khi thêm sách.', error: err.message });
     }
 };
 
