@@ -6,7 +6,9 @@ import {
     getBookMetadata, 
     createBook, 
     updateBook, 
-    deleteBook 
+    deleteBook,
+    createAuthorQuick,   // 👇 Import mới
+    createCategoryQuick  // 👇 Import mới
 } from "../../services/bookManagementService";
 import "./BookManagement.css";
 
@@ -28,7 +30,7 @@ export default function BookManagement() {
     const initialForm = {
         maSach: "", tenSach: "", maTG: "", maDM: "",
         giaBan: 0, soLuongTon: 0, namXuatBan: new Date().getFullYear(),
-        moTa: "", donViTinh: "Cuốn", tinhTrang: "Hết", anhMinhHoa: "" // Link ảnh cũ (dạng text)
+        moTa: "", donViTinh: "Cuốn", tinhTrang: "Hết", anhMinhHoa: "" 
     };
     const [formData, setFormData] = useState(initialForm);
 
@@ -51,18 +53,58 @@ export default function BookManagement() {
         }
     };
 
+    // Hàm load riêng metadata (dùng khi thêm nhanh tác giả/danh mục)
+    const refreshMetadata = async () => {
+        try {
+            const metaRes = await getBookMetadata();
+            setMetadata(metaRes.data?.data || { authors: [], categories: [] });
+        } catch (error) {
+            console.error("Lỗi cập nhật danh sách:", error);
+        }
+    };
+
     // --- HANDLERS ---
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData({ ...formData, [name]: value });
     };
 
-    // Xử lý khi chọn file từ máy tính
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file) {
             setSelectedFile(file);
-            setPreviewUrl(URL.createObjectURL(file)); // Tạo link preview xem trước
+            setPreviewUrl(URL.createObjectURL(file)); 
+        }
+    };
+
+    // 👇 LOGIC MỚI: Thêm nhanh Tác giả / Danh mục
+    const handleAddQuick = async (type) => {
+        const label = type === 'author' ? "Tác giả" : "Danh mục";
+        const name = window.prompt(`Nhập tên ${label} mới:`);
+        
+        if (name && name.trim()) {
+            try {
+                let res;
+                if (type === 'author') {
+                    res = await createAuthorQuick({ tenTG: name });
+                    // Tự động chọn tác giả vừa thêm vào form
+                    if(res.data?.data?.maTG) {
+                        setFormData(prev => ({ ...prev, maTG: res.data.data.maTG }));
+                    }
+                } else {
+                    res = await createCategoryQuick({ tenDM: name });
+                    // Tự động chọn danh mục vừa thêm vào form
+                    if(res.data?.data?.maDM) {
+                        setFormData(prev => ({ ...prev, maDM: res.data.data.maDM }));
+                    }
+                }
+
+                alert(`✅ Đã thêm ${label}: ${name}`);
+                await refreshMetadata(); // Load lại dropdown để hiện cái mới
+                
+            } catch (error) {
+                alert(`❌ Lỗi thêm ${label}: ` + (error.response?.data?.message || error.message));
+            }
         }
     };
 
@@ -80,10 +122,10 @@ export default function BookManagement() {
                 moTa: book.MoTa,
                 donViTinh: book.DonViTinh,
                 tinhTrang: book.TinhTrang,
-                anhMinhHoa: book.AnhMinhHoa // Giữ link ảnh cũ
+                anhMinhHoa: book.AnhMinhHoa 
             });
-            setPreviewUrl(book.AnhMinhHoa); // Hiện ảnh cũ lên
-            setSelectedFile(null); // Reset file mới
+            setPreviewUrl(book.AnhMinhHoa); 
+            setSelectedFile(null); 
         } else {
             setIsEditing(false);
             setFormData(initialForm);
@@ -93,11 +135,9 @@ export default function BookManagement() {
         setShowModal(true);
     };
 
-    // Xử lý Submit dùng FormData
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // 1. Tạo FormData để gửi file
         const dataPayload = new FormData();
         dataPayload.append("tenSach", formData.tenSach);
         dataPayload.append("maTG", formData.maTG);
@@ -110,13 +150,11 @@ export default function BookManagement() {
         
         if (isEditing) {
              dataPayload.append("tinhTrang", formData.tinhTrang);
-             // Nếu không chọn file mới, gửi lại link ảnh cũ để server biết
              if (!selectedFile) {
                  dataPayload.append("anhMinhHoa", formData.anhMinhHoa);
              }
         }
 
-        // 2. Nếu có chọn file mới thì nhét vào
         if (selectedFile) {
             dataPayload.append("AnhMinhHoa", selectedFile);
         }
@@ -223,22 +261,49 @@ export default function BookManagement() {
                                             <label>Tên Sách <span className="req">*</span></label>
                                             <input required name="tenSach" value={formData.tenSach} onChange={handleChange} />
                                         </div>
+                                        
                                         <div className="form-group-row">
+                                            {/* 👇 UPDATE: Dropdown Tác giả + Nút thêm nhanh */}
                                             <div className="form-group">
                                                 <label>Tác Giả <span className="req">*</span></label>
-                                                <select required name="maTG" value={formData.maTG} onChange={handleChange}>
-                                                    <option value="">-- Chọn --</option>
-                                                    {metadata.authors.map(a => <option key={a.MaTG} value={a.MaTG}>{a.TenTG}</option>)}
-                                                </select>
+                                                <div style={{display: 'flex', gap: '5px'}}>
+                                                    <select required name="maTG" value={formData.maTG} onChange={handleChange} style={{flex: 1}}>
+                                                        <option value="">-- Chọn --</option>
+                                                        {metadata.authors.map(a => <option key={a.MaTG} value={a.MaTG}>{a.TenTG}</option>)}
+                                                    </select>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn-quick-add" 
+                                                        onClick={() => handleAddQuick('author')}
+                                                        title="Thêm Tác giả mới"
+                                                        style={{height: '38px', width: '38px', padding: 0, cursor: 'pointer'}}
+                                                    >
+                                                        ➕
+                                                    </button>
+                                                </div>
                                             </div>
+
+                                            {/* 👇 UPDATE: Dropdown Danh mục + Nút thêm nhanh */}
                                             <div className="form-group">
                                                 <label>Danh Mục <span className="req">*</span></label>
-                                                <select required name="maDM" value={formData.maDM} onChange={handleChange}>
-                                                    <option value="">-- Chọn --</option>
-                                                    {metadata.categories.map(c => <option key={c.MaDM} value={c.MaDM}>{c.TenDM}</option>)}
-                                                </select>
+                                                <div style={{display: 'flex', gap: '5px'}}>
+                                                    <select required name="maDM" value={formData.maDM} onChange={handleChange} style={{flex: 1}}>
+                                                        <option value="">-- Chọn --</option>
+                                                        {metadata.categories.map(c => <option key={c.MaDM} value={c.MaDM}>{c.TenDM}</option>)}
+                                                    </select>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn-quick-add" 
+                                                        onClick={() => handleAddQuick('category')}
+                                                        title="Thêm Danh mục mới"
+                                                        style={{height: '38px', width: '38px', padding: 0, cursor: 'pointer'}}
+                                                    >
+                                                        ➕
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
+
                                         <div className="form-group-row">
                                             <div className="form-group">
                                                 <label>Giá Bán</label>
@@ -253,11 +318,9 @@ export default function BookManagement() {
 
                                     {/* Cột Phải */}
                                     <div className="form-col">
-                                        {/* 👇 ĐÃ SỬA: Input chọn file ảnh */}
                                         <div className="form-group">
                                             <label>Ảnh Minh Họa</label>
                                             <input type="file" accept="image/*" onChange={handleFileChange} className="file-input" />
-                                            
                                             {previewUrl && (
                                                 <div className="img-preview" style={{marginTop: '10px', textAlign: 'center'}}>
                                                     <img src={previewUrl} alt="Preview" style={{height: '100px', borderRadius: '5px', border: '1px solid #ccc'}} />
