@@ -407,3 +407,92 @@
     justify-content: center;
   }
 }
+/* --- TOOLBAR: SEARCH & FILTER --- */
+.table-toolbar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.search-box {
+  flex: 1; /* Chiếm phần lớn chiều rộng */
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-gray);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 10px 10px 10px 36px; /* Padding trái để né icon */
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.search-box input:focus {
+  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.filter-box select {
+  padding: 10px 32px 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: white;
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 200px;
+}
+
+/* --- PAGINATION (PHÂN TRANG) --- */
+.pagination {
+  display: flex;
+  justify-content: flex-end; /* Căn phải */
+  align-items: center;
+  margin-top: 16px;
+  gap: 12px;
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.page-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-dark);
+  transition: all 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #f9fafb;
+}
+
+.page-info {
+  font-size: 14px;
+  color: var(--text-gray);
+}
