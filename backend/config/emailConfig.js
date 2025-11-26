@@ -2,25 +2,27 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// 1. Lấy thông tin và cắt khoảng trắng thừa (Trim)
 const emailUser = process.env.EMAIL_USER ? process.env.EMAIL_USER.trim() : '';
 const emailPass = process.env.EMAIL_PASS ? process.env.EMAIL_PASS.trim() : '';
 
-// 2. Kiểm tra xem có thiếu cấu hình không
 if (!emailUser || !emailPass) {
-    console.error("❌ LỖI: Thiếu cấu hình EMAIL_USER hoặc EMAIL_PASS trong file .env");
+    console.error("❌ LỖI: Thiếu cấu hình EMAIL_USER hoặc EMAIL_PASS");
 }
 
-// 3. Tạo Transporter (Người vận chuyển)
+// SỬA ĐOẠN NÀY: Dùng cấu hình thủ công thay vì service: 'gmail'
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: "smtp.gmail.com",
+    port: 587,              // Port 587 (TLS) hoạt động ổn định nhất trên Cloud
+    secure: false,          // false cho port 587 (true chỉ cho port 465)
     auth: {
         user: emailUser,
         pass: emailPass
+    },
+    tls: {
+        rejectUnauthorized: false // Giúp tránh lỗi SSL certificate trên server ảo
     }
 });
 
-// 4. Kiểm tra kết nối ngay khi khởi động server (Optional)
 transporter.verify((error, success) => {
     if (error) {
         console.error("❌ Lỗi kết nối Email Server:", error.message);
