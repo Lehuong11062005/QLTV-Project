@@ -1,12 +1,12 @@
-// controllers/authController.js
 const sql = require('mssql');
 const config = require('../db/dbConfig');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-// 👇 SỬA: Import transporter từ file cấu hình, không import nodemailer trực tiếp nữa
-const transporter = require('../config/emailConfig'); 
-const crypto = require('crypto'); 
+const crypto = require('crypto');
 const { getUniqueId } = require('../utils/dbUtils');
+
+// 👇 QUAN TRỌNG: Import transporter từ file cấu hình đã sửa Port 587
+const transporter = require('../config/emailConfig'); 
 
 // ============================================================
 // XỬ LÝ ĐĂNG KÝ (CÓ TRANSACTION)
@@ -29,7 +29,6 @@ exports.register = async (req, res) => {
         transaction = new sql.Transaction(pool);
         await transaction.begin();
 
-        // Tạo request RIÊNG cho mỗi lần truy vấn
         const request1 = transaction.request();
         const request2 = transaction.request();
         const request3 = transaction.request();
@@ -104,6 +103,7 @@ exports.register = async (req, res) => {
             await sendActivationEmail(tenDangNhap, hoTen, activationLink);
         } catch (emailError) {
             console.error('Error sending activation email:', emailError);
+            // Không throw lỗi ở đây để user vẫn đăng ký được dù lỗi mail
         }
 
         res.status(201).json({ 
@@ -125,13 +125,12 @@ exports.register = async (req, res) => {
 };
 
 // ============================================================
-// HÀM GỬI EMAIL KÍCH HOẠT (ĐÃ CẬP NHẬT DÙNG CONFIG)
+// HÀM GỬI EMAIL KÍCH HOẠT (ĐÃ SỬA: Dùng transporter import)
 // ============================================================
 async function sendActivationEmail(email, hoTen, activationLink) {
     try {
-        // 👇 SỬA: Không tạo transporter mới nữa, dùng cái đã import
         const mailOptions = {
-            from: `"Thư Viện" <${process.env.EMAIL_USER}>`, // Thêm tên hiển thị cho đẹp
+            from: `"Thư Viện QLTV" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: 'Kích hoạt tài khoản Thư viện',
             html: `
@@ -152,10 +151,11 @@ async function sendActivationEmail(email, hoTen, activationLink) {
             `
         };
 
+        // Sử dụng transporter đã import từ file config
         await transporter.sendMail(mailOptions);
-        console.log('Activation email sent to:', email);
+        console.log('✅ Activation email sent to:', email);
     } catch (error) {
-        console.error('Error sending activation email:', error);
+        console.error('❌ Error sending activation email:', error);
         throw new Error('Không thể gửi email kích hoạt');
     }
 }
@@ -335,15 +335,14 @@ exports.login = async (req, res) => {
 };
 
 // ============================================================
-// HÀM GỬI EMAIL ĐẶT LẠI MẬT KHẨU (ĐÃ CẬP NHẬT DÙNG CONFIG)
+// HÀM GỬI EMAIL ĐẶT LẠI MẬT KHẨU (ĐÃ SỬA: Dùng transporter import)
 // ============================================================
 async function sendResetEmail(email, hoTen, resetLink) {
     try {
         console.log('🔄 Attempting to send reset email to:', email);
         
-        // 👇 SỬA: Dùng transporter chung
         const mailOptions = {
-            from: `"Thư Viện" <${process.env.EMAIL_USER}>`,
+            from: `"Thư Viện QLTV" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: '🔐 Đặt lại mật khẩu Thư viện',
             html: `
@@ -396,7 +395,7 @@ exports.forgotPassword = async (req, res) => {
 
         if (result.recordset.length === 0) {
             await transaction.commit(); 
-            // Trả về 200 giả vờ để bảo mật (không lộ email chưa đăng ký)
+            // Trả về 200 giả vờ để bảo mật
             return res.status(200).json({ message: 'Nếu tài khoản tồn tại, một email đặt lại mật khẩu đã được gửi.' });
         }
         
@@ -431,7 +430,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 // ============================================================
-// ĐẶT LẠI MẬT KHẨU (Giữ nguyên logic cũ)
+// ĐẶT LẠI MẬT KHẨU
 // ============================================================
 exports.resetPassword = async (req, res) => {
     const { token, newPassword } = req.body; 
@@ -494,13 +493,12 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
-// ... (Các hàm getProfile, updateProfile bạn giữ nguyên như cũ là ổn)
+// ============================================================
+// CÁC HÀM GET/UPDATE PROFILE
+// ============================================================
 exports.getProfile = async (req, res) => {
-    // ... (Code cũ của bạn, không liên quan đến email nên giữ nguyên)
     const MaNguoiDung = req.user.UserId;
     const LoaiTK = req.user.LoaiTK;
-    // Copy lại phần getProfile từ code cũ vào đây nếu cần
-    // ...
     try {
         const pool = await sql.connect(config);
         if (LoaiTK === 'DocGia') {
@@ -518,11 +516,9 @@ exports.getProfile = async (req, res) => {
 };
 
 exports.updateProfile = async (req, res) => {
-    // ... (Code cũ của bạn, giữ nguyên)
     const MaNguoiDung = req.user.UserId;
     const LoaiTK = req.user.LoaiTK;
     const { HoTen, SDT, DiaChi } = req.body;
-    // ... copy logic update từ code cũ ...
     try {
         const pool = await sql.connect(config);
         if (LoaiTK === 'DocGia') {
