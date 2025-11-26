@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "nodemailer-sendgrid": "^1.0.3"
+  }
+}

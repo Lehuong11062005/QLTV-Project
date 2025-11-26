@@ -1,21 +1,20 @@
+// backend/config/emailConfig.js
 const nodemailer = require('nodemailer');
+const sgTransport = require('nodemailer-sendgrid'); // Thư viện mới vừa cài
 require('dotenv').config();
 
-const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.EMAIL_USER?.trim(),
-        pass: process.env.EMAIL_PASS?.trim()  // App Password (16 ký tự)
-    }
-});
+// Kiểm tra xem đã có API Key chưa
+if (!process.env.SENDGRID_API_KEY) {
+    console.error("❌ LỖI: Thiếu SENDGRID_API_KEY. Hãy kiểm tra biến môi trường.");
+}
 
-// Kiểm tra kết nối
-transporter.verify((error, success) => {
-    if (error) {
-        console.error("❌ Lỗi Email Server:", error.message);
-    } else {
-        console.log("✅ Gmail SMTP hoạt động ổn định!");
-    }
-});
+const options = {
+    apiKey: process.env.SENDGRID_API_KEY
+};
+
+// Tạo transporter sử dụng giao thức API của SendGrid (Không lo bị chặn Port)
+const transporter = nodemailer.createTransport(sgTransport(options));
+
+console.log("✅ Cấu hình Email: Đang sử dụng SendGrid API.");
 
 module.exports = transporter;
