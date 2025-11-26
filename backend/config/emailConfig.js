@@ -1,28 +1,21 @@
-// backend/config/emailConfig.js
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-const emailUser = process.env.EMAIL_USER ? process.env.EMAIL_USER.trim() : '';
-const emailPass = process.env.EMAIL_PASS ? process.env.EMAIL_PASS.trim() : '';
-
-if (!emailUser || !emailPass) {
-    console.error("❌ LỖI: Thiếu cấu hình EMAIL_USER hoặc EMAIL_PASS");
-}
-
-// SỬA ĐOẠN NÀY: Dùng cấu hình thủ công thay vì service: 'gmail'
+// CẤU HÌNH CHUẨN CHO RENDER (Copy đè lên code cũ)
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 587,              // Port 587 (TLS) hoạt động ổn định nhất trên Cloud
-    secure: false,          // false cho port 587 (true chỉ cho port 465)
+    port: 587,              // Cổng 587 (TLS) là cổng chuẩn quốc tế, không bị chặn
+    secure: false,          // Bắt buộc là false khi dùng port 587
     auth: {
-        user: emailUser,
-        pass: emailPass
+        user: process.env.EMAIL_USER?.trim(),
+        pass: process.env.EMAIL_PASS?.trim()
     },
     tls: {
-        rejectUnauthorized: false // Giúp tránh lỗi SSL certificate trên server ảo
+        rejectUnauthorized: false // Giúp bỏ qua các lỗi bảo mật mạng khắt khe trên Cloud
     }
 });
 
+// Kiểm tra kết nối
 transporter.verify((error, success) => {
     if (error) {
         console.error("❌ Lỗi kết nối Email Server:", error.message);
