@@ -92,7 +92,7 @@ export default function Checkout() {
             // 3. Chuyển hướng người dùng sau 2 giây (Đây là hành động quan trọng nhất)
             setTimeout(() => {
                 // Chuyển hướng sang trang lịch sử đơn hàng để xác nhận
-                navigate('/user/purchase-history'); 
+                navigate('/user/history'); 
             }, 2000);
             
         } else {
