@@ -1,3 +1,4 @@
+// src/pages/page_admin/AdminPurchaseOrders.js
 import React, { useState, useEffect } from "react";
 import Layout from "../../components/Layout";
 import { getAllOrdersAdmin, getOrderDetailAdmin, updateOrderStatus } from "../../services/orderService";
@@ -10,39 +11,36 @@ export default function AdminPurchaseOrders() {
     const [orders, setOrders] = useState([]);
     const [filteredOrders, setFilteredOrders] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [currentTab, setCurrentTab] = useState("ChoDuyet"); // Tabs: ChoDuyet, DangGiao, HoanThanh, DaHuy, TatCa
+    const [currentTab, setCurrentTab] = useState("ChoDuyet");
 
-    // State Modal Detail
+    // Modal
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [orderItems, setOrderItems] = useState([]);
     const [showModal, setShowModal] = useState(false);
-    const [processing, setProcessing] = useState(false);
     
-    // State cập nhật trạng thái
+    // Input cập nhật
     const [maVanDon, setMaVanDon] = useState("");
 
-    useEffect(() => {
-        fetchOrders();
-    }, []);
+    useEffect(() => { fetchOrders(); }, []);
 
     useEffect(() => {
-        if (currentTab === "TatCa") {
-            setFilteredOrders(orders);
-        } else {
-            setFilteredOrders(orders.filter(o => o.TrangThai === currentTab));
-        }
+        if (currentTab === "TatCa") setFilteredOrders(orders);
+        else setFilteredOrders(orders.filter(o => o.TrangThai === currentTab));
     }, [currentTab, orders]);
 
     const fetchOrders = async () => {
         setLoading(true);
         try {
-            const res = await getAllOrdersAdmin(); // Lấy tất cả
+            const res = await getAllOrdersAdmin();
             setOrders(res.data?.data || []);
-        } catch (error) {
-            console.error("Lỗi tải đơn hàng:", error);
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error("Lỗi tải đơn:", error); } 
+        finally { setLoading(false); }
+    };
+
+    // 🔥 Helper hiển thị trạng thái thanh toán
+    const getPaymentBadge = (status) => {
+        if (status === 'DaThanhToan') return <span className="badge-paid">✅ Đã TT</span>;
+        return <span className="badge-unpaid">⚠️ Chưa TT</span>;
     };
 
     const handleViewDetail = async (orderId) => {
@@ -50,33 +48,34 @@ export default function AdminPurchaseOrders() {
             const res = await getOrderDetailAdmin(orderId);
             const data = res.data?.data || [];
             if (data.length > 0) {
-                // Gom nhóm thông tin
                 const info = data[0];
-                setSelectedOrder({
-                    MaDH: info.MaDH,
-                    NguoiMua: info.NguoiMua,
-                    SDT: info.SDT,
-                    DiaChi: info.DiaChiGiaoHang,
-                    NgayTao: info.NgayTao,
-                    TongTien: info.TongTien,
-                    PhiVanChuyen: info.PhiVanChuyen,
-                    TrangThai: info.TrangThai,
-                    HinhThuc: info.HinhThucThanhToan,
-                    MaVanDon: info.MaVanDon
-                });
+                setSelectedOrder({ ...info }); // Spread toàn bộ thông tin (bao gồm TrangThaiThanhToan)
                 setOrderItems(data);
                 setMaVanDon(info.MaVanDon || "");
                 setShowModal(true);
             }
-        } catch (error) {
-            alert("Lỗi tải chi tiết: " + error.message);
-        }
+        } catch (e) { alert("Lỗi tải chi tiết"); }
     };
 
     const handleUpdateStatus = async (status) => {
-        if (!window.confirm(`Xác nhận chuyển trạng thái đơn hàng sang: ${status}?`)) return;
+        // 🔥 LOGIC AN TOÀN: Cảnh báo nếu giao hàng cho đơn chưa trả tiền
+        if (status === 'DangGiao') {
+            const isOnline = selectedOrder.HinhThucThanhToan === 'MoMo' || selectedOrder.HinhThucThanhToan === 'Bank';
+            const isUnpaid = selectedOrder.TrangThaiThanhToan === 'ChuaThanhToan';
+            
+            if (isOnline && isUnpaid) {
+                // Nếu chưa trả tiền -> Hiện cảnh báo xác nhận
+                const confirmShip = window.confirm(
+                    "⚠️ CẢNH BÁO NGUY HIỂM!\n\n" +
+                    "Đơn hàng này thanh toán Online nhưng trạng thái là CHƯA THANH TOÁN.\n" +
+                    "Bạn có chắc chắn muốn giao hàng không?"
+                );
+                if (!confirmShip) return; // Dừng lại nếu Admin bấm Cancel
+            }
+        }
 
-        setProcessing(true);
+        if (!window.confirm(`Xác nhận chuyển trạng thái sang: ${status}?`)) return;
+
         try {
             await updateOrderStatus(selectedOrder.MaDH, { 
                 trangThaiMoi: status,
@@ -84,36 +83,25 @@ export default function AdminPurchaseOrders() {
             });
             alert("✅ Cập nhật thành công!");
             setShowModal(false);
-            fetchOrders(); // Reload list
+            fetchOrders();
         } catch (error) {
-            alert("❌ Lỗi: " + (error.response?.data?.message || error.message));
-        } finally {
-            setProcessing(false);
+            alert("❌ Lỗi: " + error.message);
         }
     };
 
     return (
         <Layout>
             <div className="admin-orders-container">
-                <h2 className="page-title">📦 Quản Lý Đơn Hàng Mua</h2>
+                <h2 className="page-title">📦 Quản Lý Đơn Hàng</h2>
 
-                {/* TABS TRẠNG THÁI */}
                 <div className="status-tabs">
-                    {["ChoDuyet", "DangGiao", "HoanThanh", "DaHuy", "TatCa"].map(status => (
-                        <button 
-                            key={status}
-                            className={`tab-btn ${currentTab === status ? 'active' : ''}`}
-                            onClick={() => setCurrentTab(status)}
-                        >
-                            {status === "ChoDuyet" ? "⏳ Chờ Duyệt" : 
-                             status === "DangGiao" ? "🚚 Đang Giao" :
-                             status === "HoanThanh" ? "✅ Hoàn Thành" :
-                             status === "DaHuy" ? "❌ Đã Hủy" : "📋 Tất Cả"}
+                    {["ChoDuyet", "DangGiao", "HoanThanh", "DaHuy", "TatCa"].map(st => (
+                        <button key={st} className={`tab-btn ${currentTab === st ? 'active' : ''}`} onClick={() => setCurrentTab(st)}>
+                            {st === "TatCa" ? "Tất Cả" : st}
                         </button>
                     ))}
                 </div>
 
-                {/* DANH SÁCH ĐƠN HÀNG */}
                 <div className="table-wrapper">
                     {loading ? <p>Đang tải...</p> : (
                         <table className="admin-table">
@@ -123,6 +111,7 @@ export default function AdminPurchaseOrders() {
                                     <th>Khách Hàng</th>
                                     <th>Ngày Đặt</th>
                                     <th>Tổng Tiền</th>
+                                    <th>Thanh Toán</th> {/* Cột mới */}
                                     <th>Trạng Thái</th>
                                     <th>Thao tác</th>
                                 </tr>
@@ -130,22 +119,22 @@ export default function AdminPurchaseOrders() {
                             <tbody>
                                 {filteredOrders.map(order => (
                                     <tr key={order.MaDH}>
-                                        <td><span className="code-badge">{order.MaDH}</span></td>
-                                        <td>
-                                            <div style={{fontWeight: 'bold'}}>{order.TenNguoiMua}</div>
-                                            <small>{order.MaDG}</small>
-                                        </td>
+                                        <td><b>{order.MaDH}</b></td>
+                                        <td>{order.TenNguoiMua}<br/><small>{order.MaDG}</small></td>
                                         <td>{formatDate(order.NgayTao)}</td>
                                         <td className="price-text">{formatCurrency(order.TongTien)}</td>
+                                        
+                                        {/* 🔥 Cột hiển thị trạng thái thanh toán */}
                                         <td>
-                                            <span className={`status-badge ${order.TrangThai}`}>
-                                                {order.TrangThai}
-                                            </span>
+                                            <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
+                                                <small>{order.HinhThucThanhToan}</small>
+                                                {getPaymentBadge(order.TrangThaiThanhToan)}
+                                            </div>
                                         </td>
+
+                                        <td><span className={`status-badge ${order.TrangThai}`}>{order.TrangThai}</span></td>
                                         <td>
-                                            <button className="btn-view" onClick={() => handleViewDetail(order.MaDH)}>
-                                                Xem
-                                            </button>
+                                            <button className="btn-view" onClick={() => handleViewDetail(order.MaDH)}>Xem</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -154,41 +143,27 @@ export default function AdminPurchaseOrders() {
                     )}
                 </div>
 
-                {/* MODAL CHI TIẾT & XỬ LÝ */}
+                {/* MODAL CHI TIẾT */}
                 {showModal && selectedOrder && (
                     <div className="modal-overlay">
                         <div className="modal-content large-modal">
                             <div className="modal-header">
-                                <h3>Chi tiết đơn: {selectedOrder.MaDH}</h3>
+                                <h3>Đơn hàng #{selectedOrder.MaDH}</h3>
                                 <button className="btn-close" onClick={() => setShowModal(false)}>&times;</button>
                             </div>
                             
                             <div className="modal-body">
-                                <div className="info-columns">
-                                    <div className="info-col">
-                                        <h4>Thông tin Khách hàng</h4>
-                                        <p>👤 {selectedOrder.NguoiMua}</p>
-                                        <p>📞 {selectedOrder.SDT}</p>
-                                        <p>📍 {selectedOrder.DiaChi}</p>
-                                    </div>
-                                    <div className="info-col">
-                                        <h4>Thông tin Đơn hàng</h4>
-                                        <p>📅 Ngày: {formatDate(selectedOrder.NgayTao)}</p>
-                                        <p>💳 TT: {selectedOrder.HinhThuc}</p>
-                                        <p>🚚 Ship: {formatCurrency(selectedOrder.PhiVanChuyen)}</p>
-                                    </div>
+                                <div className="info-row">
+                                    <p><b>Khách hàng:</b> {selectedOrder.NguoiMua} - {selectedOrder.SDT}</p>
+                                    <p><b>Địa chỉ:</b> {selectedOrder.DiaChiGiaoHang}</p>
+                                    <p>
+                                        <b>Thanh toán:</b> {selectedOrder.HinhThucThanhToan} 
+                                        <span style={{marginLeft:'10px'}}>{getPaymentBadge(selectedOrder.TrangThaiThanhToan)}</span>
+                                    </p>
                                 </div>
 
-                                <h4>Sản phẩm</h4>
                                 <table className="detail-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Sách</th>
-                                            <th>Giá</th>
-                                            <th>SL</th>
-                                            <th>Thành tiền</th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th>Sách</th><th>Giá</th><th>SL</th><th>Thành tiền</th></tr></thead>
                                     <tbody>
                                         {orderItems.map((item, idx) => (
                                             <tr key={idx}>
@@ -200,38 +175,25 @@ export default function AdminPurchaseOrders() {
                                         ))}
                                     </tbody>
                                 </table>
-                                <div className="total-row">
-                                    Tổng thanh toán: <span>{formatCurrency(selectedOrder.TongTien)}</span>
-                                </div>
+                                
+                                <div className="total-row">Tổng cộng: {formatCurrency(selectedOrder.TongTien)}</div>
 
-                                {/* ACTIONS */}
                                 <div className="action-area">
                                     {selectedOrder.TrangThai === "ChoDuyet" && (
                                         <>
-                                            <div className="shipping-input">
-                                                <label>Mã Vận Đơn (Nếu có):</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={maVanDon} 
-                                                    onChange={e => setMaVanDon(e.target.value)}
-                                                    placeholder="VD: GHTK123456"
-                                                />
-                                            </div>
-                                            <div className="btn-group">
-                                                <button className="btn-reject" onClick={() => handleUpdateStatus("DaHuy")}>Hủy Đơn</button>
-                                                <button className="btn-approve" onClick={() => handleUpdateStatus("DangGiao")}>🚀 Xác nhận & Giao hàng</button>
-                                            </div>
+                                            <input 
+                                                type="text" placeholder="Nhập Mã Vận Đơn (nếu có)" 
+                                                value={maVanDon} onChange={e => setMaVanDon(e.target.value)} 
+                                                className="input-shipping"
+                                            />
+                                            <button className="btn-reject" onClick={() => handleUpdateStatus("DaHuy")}>Hủy Đơn</button>
+                                            <button className="btn-approve" onClick={() => handleUpdateStatus("DangGiao")}>🚀 Xác nhận & Giao hàng</button>
                                         </>
                                     )}
-
                                     {selectedOrder.TrangThai === "DangGiao" && (
-                                        <div className="btn-group">
-                                            <button className="btn-approve" onClick={() => handleUpdateStatus("HoanThanh")}>✅ Xác nhận Hoàn Thành (Đã nhận tiền)</button>
-                                        </div>
-                                    )}
-                                    
-                                    {(selectedOrder.TrangThai === "HoanThanh" || selectedOrder.TrangThai === "DaHuy") && (
-                                        <p className="status-final">Đơn hàng đã kết thúc.</p>
+                                        <button className="btn-complete" onClick={() => handleUpdateStatus("HoanThanh")}>
+                                            ✅ Hoàn thành (Đã giao & Nhận tiền)
+                                        </button>
                                     )}
                                 </div>
                             </div>

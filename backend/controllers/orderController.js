@@ -1,7 +1,7 @@
 const sql = require("mssql");
 const config = require("../db/dbConfig");
 const { getUniqueId } = require("../utils/dbUtils");
-
+const paymentController = require('./paymentController');
 // Hàm tiện ích để lấy request từ transaction hoặc pool
 const getRequest = (context) => context.request();
 
@@ -293,18 +293,22 @@ exports.updateOrderStatus = async (req, res) => {
         const { trangThaiMoi, maVanDon } = req.body;
 
         if (!trangThaiMoi) {
-            return res.status(400).json({
-                code: 400,
-                message: "Thiếu trạng thái mới."
-            });
+            return res.status(400).json({ code: 400, message: "Thiếu trạng thái mới." });
         }
 
         const pool = await sql.connect(config);
+        
+        // 1. Cập nhật bảng DonHang
         const request = pool.request()
             .input("MaDH", sql.VarChar, MaDH)
             .input("TrangThaiMoi", sql.NVarChar, trangThaiMoi);
 
         let query = "UPDATE DonHang SET TrangThai = @TrangThaiMoi";
+
+        // Nếu trạng thái là HoanThanh -> Cập nhật luôn TrangThaiThanhToan = DaThanhToan (cho chắc chắn)
+        if (trangThaiMoi === 'HoanThanh') {
+            query += ", TrangThaiThanhToan = N'DaThanhToan'";
+        }
 
         if (maVanDon !== undefined) {
             query += ", MaVanDon = @MaVanDon";
@@ -313,14 +317,35 @@ exports.updateOrderStatus = async (req, res) => {
 
         query += " WHERE MaDH = @MaDH";
 
-        const result = await request.query(query);
+        await request.query(query);
+
+        // 2. 🔥 LOGIC MỚI: Tự động tạo giao dịch nếu là Hoàn Thành & COD
+        if (trangThaiMoi === 'HoanThanh') {
+            // Lấy thông tin đơn hàng để kiểm tra hình thức thanh toán
+            const orderInfo = await pool.request()
+                .input("MaDH", sql.VarChar, MaDH)
+                .query("SELECT TongTien, HinhThucThanhToan FROM DonHang WHERE MaDH = @MaDH");
+            
+            if (orderInfo.recordset.length > 0) {
+                const { TongTien, HinhThucThanhToan } = orderInfo.recordset[0];
+
+                // Nếu là COD hoặc Tiền mặt -> Ghi nhận vào bảng ThanhToan
+                // (Chuyển về chữ thường để so sánh cho an toàn)
+                const method = (HinhThucThanhToan || '').toLowerCase();
+                if (method === 'cod' || method === 'tienmat' || method === 'tiền mặt') {
+                    console.log(`💰 Đang tạo giao dịch COD cho đơn ${MaDH}...`);
+                    await paymentController.createCODTransaction(MaDH, TongTien);
+                }
+            }
+        }
 
         res.status(200).json({
             code: 200,
             maDonHang: MaDH,
             trangThaiMoi,
-            message: "Cập nhật trạng thái đơn hàng thành công."
+            message: "Cập nhật trạng thái thành công."
         });
+
     } catch (error) {
         console.error("Error updating order:", error);
         res.status(500).json({

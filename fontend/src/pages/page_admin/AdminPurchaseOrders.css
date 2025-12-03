@@ -1,135 +1,267 @@
-/* Container */
+/* Kế thừa một số style cơ bản từ file trên nếu import chung, 
+   nhưng ở đây viết độc lập để dễ copy */
+
 .admin-orders-container {
-    max-width: 1200px;
-    margin: 0 auto;
     padding: 20px;
-    background: #fff;
-    min-height: 85vh;
+    background-color: #f9fafb;
+    min-height: 100vh;
 }
 
-/* Tabs */
+.page-title {
+    font-size: 1.5rem;
+    color: #111827;
+    margin-bottom: 20px;
+}
+
+/* --- TABS TRẠNG THÁI --- */
 .status-tabs {
     display: flex;
     gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 10px;
+    margin-bottom: 25px;
+    overflow-x: auto;
+    padding-bottom: 5px;
 }
 
 .tab-btn {
-    padding: 8px 16px;
-    background: none;
+    padding: 10px 20px;
     border: none;
-    border-radius: 20px;
+    background: white;
     color: #6b7280;
-    font-weight: 600;
+    border-radius: 8px;
     cursor: pointer;
+    font-weight: 500;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    white-space: nowrap;
     transition: all 0.2s;
 }
 
-.tab-btn:hover { background: #f3f4f6; }
-.tab-btn.active { 
-    background: #e0f2fe; 
-    color: #0369a1; 
-    border: 1px solid #bae6fd;
+.tab-btn:hover {
+    background-color: #f3f4f6;
+    color: #374151;
 }
 
-/* Table */
+.tab-btn.active {
+    background-color: #2563eb; /* Màu xanh chủ đạo */
+    color: white;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+}
+
+/* --- TABLE STYLES (Đồng bộ với Payment) --- */
+.table-wrapper {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table th, .admin-table td {
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-table th {
+    background-color: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Badges Status Đơn hàng */
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.status-badge.ChoDuyet { background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+.status-badge.DangGiao { background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }
+.status-badge.HoanThanh { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
+.status-badge.DaHuy { background: #fef2f2; color: #b91c1c; border: 1px solid #fee2e2; }
+
+/* Badges Payment Status (Đã TT / Chưa TT) */
+.badge-paid {
+    background-color: #dcfce7;
+    color: #15803d;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-unpaid {
+    background-color: #fee2e2;
+    color: #991b1b;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid #fecaca;
+}
+
 .price-text {
-    color: #d97706;
-    font-weight: bold;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 600;
+    color: #111827;
 }
-
-.status-badge.ChoDuyet { background: #fef3c7; color: #d97706; }
-.status-badge.DangGiao { background: #dbeafe; color: #1e40af; }
-.status-badge.HoanThanh { background: #dcfce7; color: #166534; }
-.status-badge.DaHuy { background: #fee2e2; color: #991b1b; }
 
 .btn-view {
-    padding: 5px 12px;
-    background: #fff;
+    padding: 6px 12px;
+    background: white;
     border: 1px solid #d1d5db;
     border-radius: 4px;
     cursor: pointer;
+    font-size: 0.85rem;
+    transition: 0.2s;
 }
-.btn-view:hover { border-color: #3b82f6; color: #3b82f6; }
+.btn-view:hover {
+    border-color: #2563eb;
+    color: #2563eb;
+}
 
-/* Modal Detail */
-.info-columns {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
+/* --- MODAL STYLES --- */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 50;
+    backdrop-filter: blur(2px);
+}
+
+.modal-content.large-modal {
+    background: white;
+    padding: 0; /* Header/Body sẽ có padding riêng */
+    border-radius: 12px;
+    width: 90%;
+    max-width: 700px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    animation: fadeIn 0.2s ease-out;
+    overflow: hidden;
+}
+
+.modal-header {
+    padding: 15px 25px;
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #111827;
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #6b7280;
+    cursor: pointer;
+}
+
+.modal-body {
+    padding: 25px;
+}
+
+.info-row {
     margin-bottom: 20px;
-    background: #f9fafb;
     padding: 15px;
+    background-color: #f8fafc;
     border-radius: 8px;
+    border: 1px solid #e2e8f0;
 }
 
-.info-col h4 { margin-top: 0; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;}
-.info-col p { margin: 5px 0; font-size: 0.9rem; color: #4b5563; }
+.info-row p {
+    margin: 5px 0;
+    color: #4b5563;
+}
+
+/* Bảng chi tiết trong Modal */
+.detail-table {
+    width: 100%;
+    margin-bottom: 20px;
+    border-collapse: collapse;
+}
+
+.detail-table th {
+    text-align: left;
+    border-bottom: 2px solid #e5e7eb;
+    padding: 8px;
+    color: #6b7280;
+}
+
+.detail-table td {
+    border-bottom: 1px solid #f3f4f6;
+    padding: 10px 8px;
+}
 
 .total-row {
     text-align: right;
-    font-size: 1.2rem;
-    margin-top: 15px;
-    color: #1f2937;
+    font-size: 1.1rem;
     font-weight: bold;
+    color: #111827;
+    margin-bottom: 25px;
+    padding-top: 10px;
+    border-top: 2px solid #e5e7eb;
 }
 
-.total-row span { color: #d97706; margin-left: 10px; }
-
-/* Action Area */
+/* Action Area (Nút bấm xử lý) */
 .action-area {
-    margin-top: 25px;
-    padding-top: 20px;
-    border-top: 1px dashed #e5e7eb;
-}
-
-.shipping-input {
-    margin-bottom: 15px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.shipping-input input {
-    padding: 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    flex: 1;
-    max-width: 300px;
-}
-
-.btn-group {
     display: flex;
     justify-content: flex-end;
-    gap: 15px;
+    gap: 10px;
+    padding-top: 10px;
 }
 
-.btn-approve {
-    padding: 10px 20px;
-    background: #16a34a;
+.input-shipping {
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    width: 250px;
+    margin-right: auto; /* Đẩy các nút sang phải */
+}
+
+.btn-approve, .btn-complete {
+    background-color: #2563eb;
     color: white;
     border: none;
-    border-radius: 5px;
-    font-weight: bold;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 600;
     cursor: pointer;
 }
-.btn-approve:hover { background: #15803d; }
+.btn-approve:hover { background-color: #1d4ed8; }
+
+.btn-complete { background-color: #059669; }
+.btn-complete:hover { background-color: #047857; }
 
 .btn-reject {
+    background-color: white;
+    color: #dc2626;
+    border: 1px solid #dc2626;
     padding: 10px 20px;
-    background: #ef4444;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-weight: bold;
+    border-radius: 6px;
+    font-weight: 600;
     cursor: pointer;
 }
-.btn-reject:hover { background: #dc2626; }
+.btn-reject:hover {
+    background-color: #fef2f2;
+}
 
-.status-final {
-    text-align: center;
-    color: #6b7280;
-    font-style: italic;
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }

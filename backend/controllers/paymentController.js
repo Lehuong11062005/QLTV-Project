@@ -258,3 +258,38 @@ exports.updateTransactionStatus = async (req, res) => {
         res.status(500).json({ message: "Lỗi cập nhật" });
     }
 };
+// ============================================================
+// 5. XÁC NHẬN THANH TOÁN TIỀN MẶT (CHO ĐƠN COD)
+// Hàm này sẽ được gọi từ orderController khi Admin bấm "Hoàn thành"
+// ============================================================
+exports.createCODTransaction = async (maDH, soTien) => {
+    try {
+        const pool = await sql.connect(config);
+        const maTT = `COD${Date.now().toString().slice(-8)}`;
+        const maGiaoDich = `CASH_${maDH}`; // Mã tham chiếu nội bộ
+
+        // Kiểm tra xem đã có giao dịch chưa để tránh trùng lặp
+        const check = await pool.request()
+            .input('MaDH', sql.VarChar, maDH)
+            .query("SELECT MaTT FROM ThanhToan WHERE MaDH = @MaDH AND TrangThai = N'HoanThanh'");
+        
+        if (check.recordset.length > 0) return; // Đã có rồi thì thôi
+
+        // Insert vào bảng ThanhToan
+        await pool.request()
+            .input('MaTT', sql.VarChar, maTT)
+            .input('MaDH', sql.VarChar, maDH)
+            .input('SoTien', sql.Decimal, soTien)
+            .input('MaGiaoDich', sql.VarChar, maGiaoDich)
+            .query(`
+                INSERT INTO ThanhToan (MaTT, MaDH, PhuongThuc, SoTien, TrangThai, MaGiaoDich, NgayThanhToan, LoaiGiaoDich)
+                VALUES (@MaTT, @MaDH, 'COD', @SoTien, N'HoanThanh', @MaGiaoDich, GETDATE(), 'DonHang')
+            `);
+            
+        console.log(`✅ Đã tạo giao dịch COD cho đơn ${maDH}`);
+        return true;
+    } catch (err) {
+        console.error("❌ Lỗi tạo giao dịch COD:", err);
+        return false;
+    }
+};

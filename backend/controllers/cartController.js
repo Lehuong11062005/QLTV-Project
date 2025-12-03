@@ -9,8 +9,10 @@ const SYSTEM_CONFIG = {
 };
 
 // ================================================================================
-// 🔑 HÀM TẠO ID DUY NHẤT (HELPER FUNCTION)
+// 🔑 HÀM HELPER (HỖ TRỢ)
 // ================================================================================
+
+// 1. Tạo ID duy nhất (Tăng tự động dựa trên DB)
 const getUniqueId = async (request, prefix, tableName, idColumn) => {
     const queryMaxId = `
         SELECT MAX(CAST(SUBSTRING(${idColumn}, 3, 10) AS INT)) AS MaxId
@@ -24,6 +26,31 @@ const getUniqueId = async (request, prefix, tableName, idColumn) => {
     return `${prefix}${paddedNumber}`;
 };
 
+// 2. 🔥 TÍNH TOÁN LẠI TỔNG TIỀN GIỎ HÀNG (Dùng chung cho Add/Update/Remove)
+const _recalculatePurchaseCart = async (transaction, maGH) => {
+    // Tính tổng tiền dựa trên giá hiện tại trong bảng Sach
+    const result = await transaction.request().query`
+        SELECT SUM(ghs.SoLuong * ISNULL(s.GiaBan, 0)) as NewTamTinh, 
+               SUM(ghs.SoLuong) as TongSL
+        FROM GioHang_Sach ghs 
+        JOIN Sach s ON ghs.MaSach = s.MaSach
+        WHERE ghs.MaGH = ${maGH}
+    `;
+    
+    const newTamTinh = result.recordset[0].NewTamTinh || 0;
+    const tongSL = result.recordset[0].TongSL || 0;
+
+    // Cập nhật ngược lại vào bảng GioHang
+    await transaction.request().query`
+        UPDATE GioHang SET TamTinh = ${newTamTinh} WHERE MaGH = ${maGH}
+    `;
+
+    return { newTamTinh, tongSL };
+};
+
+// ================================================================================
+// 🎮 CONTROLLER CHÍNH
+// ================================================================================
 const cartController = {
     
     // ================================================================================
@@ -70,71 +97,46 @@ const cartController = {
             const quantity = parseInt(SoLuong || soLuong || 1);
             const maDG = req.user.MaDG;
 
-            console.log(`➡️ [LOAN] Yêu cầu thêm: MaDG=${maDG}, MaSach=${bookId}, SL=${quantity}`);
-
             if (!maDG) return res.status(401).json({ message: 'Lỗi: Token không hợp lệ.' });
             if (!bookId) return res.status(400).json({ message: 'Lỗi: Thiếu Mã Sách.' });
 
             await transaction.begin();
-            // ❌ KHÔNG dùng: const request = transaction.request(); ở đây
 
-            // ---------------------------------------------------------
-            // BƯỚC 1: KIỂM TRA ĐỘC GIẢ
-            // ---------------------------------------------------------
-            // ✅ Dùng transaction.request() cho MỖI câu lệnh riêng biệt
+            // 1. Kiểm tra Độc giả
             const docGiaResult = await transaction.request().query`
                 SELECT TrangThaiThe, TongPhatChuaThanhToan FROM DocGia WHERE MaDG = ${maDG}
             `;
-            
             if (!docGiaResult.recordset.length) {
-                await transaction.rollback();
-                return res.status(404).json({ message: `Không tìm thấy Độc giả.` });
+                await transaction.rollback(); return res.status(404).json({ message: `Không tìm thấy Độc giả.` });
             }
-            
             const { TrangThaiThe, TongPhatChuaThanhToan } = docGiaResult.recordset[0];
-            
             const statusClean = TrangThaiThe ? TrangThaiThe.replace(/\s/g, '').toLowerCase() : '';
             if (!['conhan', 'cònhạn', 'hoatdong', 'hoạtđộng'].includes(statusClean)) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Thẻ độc giả không khả dụng.` });
+                await transaction.rollback(); return res.status(400).json({ message: `Thẻ độc giả không khả dụng.` });
             }
-
             if ((TongPhatChuaThanhToan || 0) > SYSTEM_CONFIG.NGUONG_TIEN_PHAT) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Bạn đang nợ phạt quá hạn mức.` });
+                await transaction.rollback(); return res.status(400).json({ message: `Bạn đang nợ phạt quá hạn mức.` });
             }
 
-            // ---------------------------------------------------------
-            // BƯỚC 2: KIỂM TRA SÁCH
-            // ---------------------------------------------------------
+            // 2. Kiểm tra Sách
             const sachResult = await transaction.request().query`
                 SELECT MaSach, TenSach, SoLuongTon, TinhTrang FROM Sach WHERE MaSach = ${bookId}
             `;
-
             if (!sachResult.recordset.length) {
-                await transaction.rollback();
-                return res.status(404).json({ message: `Sách không tồn tại.` });
+                await transaction.rollback(); return res.status(404).json({ message: `Sách không tồn tại.` });
             }
-            
             const book = sachResult.recordset[0];
             const bookStatus = book.TinhTrang ? book.TinhTrang.trim().toLowerCase() : '';
-
             if (!['con', 'còn', 'san sang', 'sẵn sàng'].includes(bookStatus)) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Sách '${book.TenSach}' hiện không khả dụng.` });
+                await transaction.rollback(); return res.status(400).json({ message: `Sách '${book.TenSach}' hiện không khả dụng.` });
             }
-
             if (book.SoLuongTon < quantity) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Kho không đủ số lượng.` });
+                await transaction.rollback(); return res.status(400).json({ message: `Kho không đủ số lượng.` });
             }
 
-            // ---------------------------------------------------------
-            // BƯỚC 3: TÍNH TOÁN GIỚI HẠN
-            // ---------------------------------------------------------
+            // 3. Tính toán giới hạn
             const dangMuonResult = await transaction.request().query`
-                SELECT COUNT(*) as SL_DangMuon 
-                FROM MuonSach ms 
+                SELECT COUNT(*) as SL_DangMuon FROM MuonSach ms 
                 JOIN MuonSach_Sach mss ON ms.MaMuon = mss.MaMuon 
                 WHERE ms.MaDG = ${maDG} AND ms.TrangThai NOT IN ('DaTraHet', 'DaHuy')
             `;
@@ -146,163 +148,112 @@ const cartController = {
 
             if (!gioMuonResult.recordset.length) {
                 const newMaGM = await getUniqueId(transaction.request(), "GM", "GioMuon", "MaGM");
-                await transaction.request().query`
-                    INSERT INTO GioMuon (MaGM, MaDG, TongSoLuong, NgayTao) 
-                    VALUES (${newMaGM}, ${maDG}, 0, GETDATE())
-                `;
+                await transaction.request().query`INSERT INTO GioMuon (MaGM, MaDG, TongSoLuong, NgayTao) VALUES (${newMaGM}, ${maDG}, 0, GETDATE())`;
                 maGioMuon = newMaGM;
             } else {
                 maGioMuon = gioMuonResult.recordset[0].MaGM;
                 slTrongGio = gioMuonResult.recordset[0].TongSoLuong || 0;
             }
 
-            const totalAll = slDangMuon + slTrongGio + quantity;
-            const GIOI_HAN = SYSTEM_CONFIG.MAX_MUON_TOI_DA || 5;
-
-            if (totalAll > GIOI_HAN) {
+            if ((slDangMuon + slTrongGio + quantity) > SYSTEM_CONFIG.MAX_MUON_TOI_DA) {
                 await transaction.rollback();
                 return res.status(400).json({ 
-                    code: 400,
-                    message: `Vượt quá giới hạn mượn (${GIOI_HAN} cuốn).`,
-                    detail: `Đang giữ: ${slDangMuon}, Trong giỏ: ${slTrongGio}, Thêm: ${quantity}.`
+                    code: 400, message: `Vượt quá giới hạn mượn (${SYSTEM_CONFIG.MAX_MUON_TOI_DA} cuốn).`
                 });
             }
 
-            // ---------------------------------------------------------
-            // BƯỚC 4: THÊM VÀO GIỎ
-            // ---------------------------------------------------------
-            const existingItem = await transaction.request().query`
-                SELECT * FROM GioMuon_Sach WHERE MaGM = ${maGioMuon} AND MaSach = ${bookId}
-            `;
-
+            // 4. Thêm vào giỏ
+            const existingItem = await transaction.request().query`SELECT * FROM GioMuon_Sach WHERE MaGM = ${maGioMuon} AND MaSach = ${bookId}`;
             if (existingItem.recordset.length > 0) {
-                await transaction.request().query`
-                    UPDATE GioMuon_Sach SET SoLuong = SoLuong + ${quantity} 
-                    WHERE MaGM = ${maGioMuon} AND MaSach = ${bookId}
-                `;
+                await transaction.request().query`UPDATE GioMuon_Sach SET SoLuong = SoLuong + ${quantity} WHERE MaGM = ${maGioMuon} AND MaSach = ${bookId}`;
             } else {
-                await transaction.request().query`
-                    INSERT INTO GioMuon_Sach (MaGM, MaSach, SoLuong) 
-                    VALUES (${maGioMuon}, ${bookId}, ${quantity})
-                `;
+                await transaction.request().query`INSERT INTO GioMuon_Sach (MaGM, MaSach, SoLuong) VALUES (${maGioMuon}, ${bookId}, ${quantity})`;
             }
 
-            // ---------------------------------------------------------
-            // BƯỚC 5: CẬP NHẬT TỔNG
-            // ---------------------------------------------------------
+            // 5. Cập nhật tổng
             await transaction.request().query`
-                UPDATE GioMuon 
-                SET TongSoLuong = (SELECT SUM(SoLuong) FROM GioMuon_Sach WHERE MaGM = ${maGioMuon})
-                WHERE MaGM = ${maGioMuon}
+                UPDATE GioMuon SET TongSoLuong = (SELECT SUM(SoLuong) FROM GioMuon_Sach WHERE MaGM = ${maGioMuon}) WHERE MaGM = ${maGioMuon}
             `;
 
             await transaction.commit();
             res.json({ code: 200, message: 'Thêm vào giỏ mượn thành công!' });
 
         } catch (error) {
-            if (transaction._aborted === false) {
-                try { await transaction.rollback(); } catch (e) {}
-            }
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
             console.error('❌ Lỗi addToLoanCart:', error);
             res.status(500).json({ message: 'Lỗi hệ thống: ' + error.message });
         }
     },
+
     updateLoanCartItem: async (req, res) => {
         const transaction = new sql.Transaction();
         try {
-            // 1. Lấy dữ liệu (Hỗ trợ cả PascalCase)
             const { maSach, MaSach, soLuong, SoLuong } = req.body;
             const bookId = MaSach || maSach;
             const newQty = parseInt(SoLuong || soLuong);
             const maDG = req.user.MaDG;
 
-            if (isNaN(newQty) || newQty < 1) return res.status(400).json({ message: 'Số lượng phải lớn hơn 0.' });
+            // 🔥 TỰ ĐỘNG XÓA NẾU SL <= 0
+            if (newQty <= 0) {
+                // Chúng ta sẽ gọi hàm remove nhưng phải xử lý req/res phù hợp. 
+                // Cách tốt nhất là tái sử dụng logic remove ở đây hoặc gọi hàm remove trực tiếp nếu cấu trúc cho phép.
+                // Để an toàn trong transaction này, ta tự viết logic xóa ở dưới.
+            } else {
+                if (isNaN(newQty)) return res.status(400).json({ message: 'Số lượng không hợp lệ.' });
+            }
 
             await transaction.begin();
 
-            // 2. Lấy thông tin Giỏ Mượn
-            // 🔥 Dùng transaction.request() cho MỖI câu lệnh để tránh lỗi param
             const gio = await transaction.request().query`SELECT MaGM FROM GioMuon WHERE MaDG = ${maDG}`;
-            if (!gio.recordset.length) { 
-                await transaction.rollback(); 
-                return res.status(404).json({ message: 'Không tìm thấy giỏ mượn.' }); 
-            }
+            if (!gio.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Không tìm thấy giỏ mượn.' }); }
             const maGM = gio.recordset[0].MaGM;
 
-            // 3. Lấy thông tin sách trong giỏ (để biết số lượng cũ)
-            const item = await transaction.request().query`SELECT SoLuong FROM GioMuon_Sach WHERE MaGM = ${maGM} AND MaSach = ${bookId}`;
-            if (!item.recordset.length) { 
-                await transaction.rollback(); 
-                return res.status(404).json({ message: 'Sách không có trong giỏ.' }); 
+            // Logic Xóa nếu SL <= 0
+            if (newQty <= 0) {
+                await transaction.request().query`DELETE FROM GioMuon_Sach WHERE MaGM = ${maGM} AND MaSach = ${bookId}`;
+                await transaction.request().query`UPDATE GioMuon SET TongSoLuong = (SELECT ISNULL(SUM(SoLuong), 0) FROM GioMuon_Sach WHERE MaGM = ${maGM}) WHERE MaGM = ${maGM}`;
+                const finalTotal = await transaction.request().query`SELECT TongSoLuong FROM GioMuon WHERE MaGM = ${maGM}`;
+                await transaction.commit();
+                return res.json({ code: 200, data: { tongSoLuongMoi: finalTotal.recordset[0].TongSoLuong }, message: 'Đã xóa sách khỏi giỏ.' });
             }
+
+            // Logic Update
+            const item = await transaction.request().query`SELECT SoLuong FROM GioMuon_Sach WHERE MaGM = ${maGM} AND MaSach = ${bookId}`;
+            if (!item.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Sách không có trong giỏ.' }); }
             
             const oldQty = item.recordset[0].SoLuong;
-            const diff = newQty - oldQty; // Chênh lệch (Ví dụ: đang 1 sửa thành 3 -> diff = +2)
+            const diff = newQty - oldQty;
 
-            // 4. Kiểm tra Tồn kho
             const stock = await transaction.request().query`SELECT SoLuongTon FROM Sach WHERE MaSach = ${bookId}`;
             if (newQty > stock.recordset[0].SoLuongTon) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Không đủ tồn kho (Còn: ${stock.recordset[0].SoLuongTon}).` });
+                await transaction.rollback(); return res.status(400).json({ message: `Không đủ tồn kho (Còn: ${stock.recordset[0].SoLuongTon}).` });
             }
 
-            // 5. 🔥 KIỂM TRA GIỚI HẠN MƯỢN (Logic quan trọng)
-            // Phải tính tổng: (Sách đang giữ) + (Tổng trong giỏ hiện tại) + (Phần chênh lệch)
-            
-            // A. Lấy số lượng đang giữ (mượn chưa trả)
+            // Check giới hạn
             const dangMuonResult = await transaction.request().query`
-                SELECT COUNT(*) as SL_DangMuon 
-                FROM MuonSach ms 
-                JOIN MuonSach_Sach mss ON ms.MaMuon = mss.MaMuon 
+                SELECT COUNT(*) as SL_DangMuon FROM MuonSach ms JOIN MuonSach_Sach mss ON ms.MaMuon = mss.MaMuon 
                 WHERE ms.MaDG = ${maDG} AND ms.TrangThai NOT IN ('DaTraHet', 'DaHuy')
             `;
             const slDangMuon = dangMuonResult.recordset[0].SL_DangMuon || 0;
-
-            // B. Lấy tổng trong giỏ hiện tại
             const cartTotalResult = await transaction.request().query`SELECT TongSoLuong FROM GioMuon WHERE MaGM = ${maGM}`;
             const currentCartTotal = cartTotalResult.recordset[0].TongSoLuong || 0;
 
-            // C. Tính tổng dự kiến sau khi update
-            const totalAfterUpdate = slDangMuon + currentCartTotal + diff;
-            const GIOI_HAN = SYSTEM_CONFIG.MAX_MUON_TOI_DA || 5;
-
-            if (totalAfterUpdate > GIOI_HAN) {
+            if ((slDangMuon + currentCartTotal + diff) > SYSTEM_CONFIG.MAX_MUON_TOI_DA) {
                 await transaction.rollback();
-                return res.status(400).json({ 
-                    code: 400, // Quan trọng để Frontend bắt lỗi
-                    message: `Vượt quá giới hạn mượn (${GIOI_HAN} cuốn).`,
-                    detail: `Đang giữ: ${slDangMuon}, Trong giỏ: ${currentCartTotal}, Thay đổi: ${diff > 0 ? '+' + diff : diff}.`
-                });
+                return res.status(400).json({ code: 400, message: `Vượt quá giới hạn mượn.` });
             }
 
-            // 6. Cập nhật
-            await transaction.request().query`
-                UPDATE GioMuon_Sach SET SoLuong = ${newQty} WHERE MaGM = ${maGM} AND MaSach = ${bookId}
-            `;
-
-            // Cập nhật tổng số lượng trong giỏ (Tính lại SUM cho chính xác tuyệt đối)
-            await transaction.request().query`
-                UPDATE GioMuon 
-                SET TongSoLuong = (SELECT SUM(SoLuong) FROM GioMuon_Sach WHERE MaGM = ${maGM}) 
-                WHERE MaGM = ${maGM}
-            `;
-
+            await transaction.request().query`UPDATE GioMuon_Sach SET SoLuong = ${newQty} WHERE MaGM = ${maGM} AND MaSach = ${bookId}`;
+            await transaction.request().query`UPDATE GioMuon SET TongSoLuong = (SELECT SUM(SoLuong) FROM GioMuon_Sach WHERE MaGM = ${maGM}) WHERE MaGM = ${maGM}`;
             const newTotalResult = await transaction.request().query`SELECT TongSoLuong FROM GioMuon WHERE MaGM = ${maGM}`;
 
             await transaction.commit();
-            
-            res.json({ 
-                code: 200, 
-                data: { tongSoLuongMoi: newTotalResult.recordset[0].TongSoLuong }, 
-                message: 'Cập nhật thành công.' 
-            });
+            res.json({ code: 200, data: { tongSoLuongMoi: newTotalResult.recordset[0].TongSoLuong }, message: 'Cập nhật thành công.' });
 
         } catch (error) {
-            if (transaction._aborted === false) {
-                try { await transaction.rollback(); } catch (e) {}
-            }
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
             console.error('❌ Lỗi update giỏ mượn:', error);
-            res.status(500).json({ code: 500, message: 'Lỗi hệ thống: ' + error.message });
+            res.status(500).json({ message: 'Lỗi hệ thống: ' + error.message });
         }
     },
 
@@ -311,26 +262,21 @@ const cartController = {
         try {
             const { maSach } = req.params;
             const maDG = req.user.MaDG;
-
             await transaction.begin();
+            
             const gio = await transaction.request().query`SELECT MaGM FROM GioMuon WHERE MaDG = ${maDG}`;
             if (!gio.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Không tìm thấy giỏ.' }); }
             const maGM = gio.recordset[0].MaGM;
 
-            const item = await transaction.request().query`SELECT SoLuong FROM GioMuon_Sach WHERE MaGM = ${maGM} AND MaSach = ${maSach}`;
-            if (!item.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Sách không có trong giỏ.' }); }
-            
-            const qty = item.recordset[0].SoLuong;
             await transaction.request().query`DELETE FROM GioMuon_Sach WHERE MaGM = ${maGM} AND MaSach = ${maSach}`;
-            await transaction.request().query`UPDATE GioMuon SET TongSoLuong = TongSoLuong - ${qty} WHERE MaGM = ${maGM}`;
+            await transaction.request().query`UPDATE GioMuon SET TongSoLuong = (SELECT ISNULL(SUM(SoLuong), 0) FROM GioMuon_Sach WHERE MaGM = ${maGM}) WHERE MaGM = ${maGM}`;
             const newTotal = await transaction.request().query`SELECT TongSoLuong FROM GioMuon WHERE MaGM = ${maGM}`;
 
             await transaction.commit();
             res.json({ code: 200, data: { tongSoLuongMoi: newTotal.recordset[0].TongSoLuong }, message: 'Xóa thành công.' });
         } catch (error) {
-            try { await transaction.rollback(); } catch (e) {}
-            console.error('❌ Lỗi xóa giỏ mượn:', error);
-            res.status(500).json({ code: 500, message: 'Lỗi server.' });
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
+            res.status(500).json({ message: 'Lỗi server.' });
         }
     },
 
@@ -348,9 +294,8 @@ const cartController = {
             await transaction.commit();
             res.json({ code: 204, message: 'Giỏ đã được làm trống.' });
         } catch (error) {
-            try { await transaction.rollback(); } catch (e) {}
-            console.error('❌ Lỗi xóa hết giỏ mượn:', error);
-            res.status(500).json({ code: 500, message: 'Lỗi server.' });
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
+            res.status(500).json({ message: 'Lỗi server.' });
         }
     },
 
@@ -361,7 +306,6 @@ const cartController = {
     getPurchaseCart: async (req, res) => {
         try {
             const maDG = req.user.MaDG;
-            // 1. Lấy thông tin giỏ hàng chung
             const gioHangResult = await sql.query`SELECT MaGH, MaDG, TamTinh FROM GioHang WHERE MaDG = ${maDG}`;
 
             if (!gioHangResult.recordset.length) {
@@ -370,16 +314,16 @@ const cartController = {
 
             const maGioHang = gioHangResult.recordset[0].MaGH; 
             
-            // 2. Lấy chi tiết sách (FIX LỖI Ở ĐÂY)
-            // Thay ghs.DonGia bằng s.GiaBan
+            // 🔥 TỐI ƯU QUERY: Kiểm tra trạng thái sách
             const chiTietResult = await sql.query`
                 SELECT 
-                    ghs.MaSach, 
-                    s.TenSach, 
-                    s.AnhMinhHoa, 
+                    ghs.MaSach, s.TenSach, s.AnhMinhHoa, 
                     ghs.SoLuong as soLuongMua, 
-                    s.GiaBan as donGia,  -- ✅ Lấy giá từ bảng Sach
-                    (ghs.SoLuong * ISNULL(s.GiaBan, 0)) as thanhTien -- ✅ Tính tiền dựa trên giá sách
+                    s.GiaBan as donGia,
+                    s.SoLuongTon as tonKho,
+                    (ghs.SoLuong * ISNULL(s.GiaBan, 0)) as thanhTien,
+                    CASE WHEN ghs.SoLuong > s.SoLuongTon THEN 1 ELSE 0 END as isHetHang,
+                    CASE WHEN s.GiaBan IS NULL OR s.GiaBan <= 0 THEN 1 ELSE 0 END as isNgungKinhDoanh
                 FROM GioHang_Sach ghs
                 JOIN Sach s ON ghs.MaSach = s.MaSach
                 WHERE ghs.MaGH = ${maGioHang}
@@ -397,7 +341,6 @@ const cartController = {
 
         } catch (error) {
             console.error('❌ Lỗi lấy giỏ hàng:', error);
-            // Trả về lỗi chi tiết để dễ debug hơn
             res.status(500).json({ code: 500, message: 'Lỗi server: ' + error.message });
         }
     },
@@ -410,95 +353,51 @@ const cartController = {
             const quantity = parseInt(SoLuong || soLuong || 1);
             const maDG = req.user.MaDG;
 
-            console.log(`➡️ [PURCHASE] Đang thêm: MaDG=${maDG}, MaSach=${bookId}, SL=${quantity}`);
-
             if (!maDG) return res.status(401).json({ message: 'Lỗi: Token không hợp lệ.' });
             if (!bookId) return res.status(400).json({ message: 'Lỗi: Thiếu Mã Sách.' });
 
             await transaction.begin();
             
-            // 1. Kiểm tra sách & Giá bán
-            const sachResult = await transaction.request().query`
-                SELECT MaSach, TenSach, GiaBan, SoLuongTon, TinhTrang FROM Sach WHERE MaSach = ${bookId}
-            `;
-
+            // 1. Kiểm tra sách
+            const sachResult = await transaction.request().query`SELECT MaSach, TenSach, GiaBan, SoLuongTon FROM Sach WHERE MaSach = ${bookId}`;
             if (!sachResult.recordset.length) {
-                await transaction.rollback();
-                return res.status(404).json({ message: `Sách không tồn tại.` });
+                await transaction.rollback(); return res.status(404).json({ message: `Sách không tồn tại.` });
             }
-
             const book = sachResult.recordset[0];
-            
-            // Kiểm tra giá bán (Phải có giá mới mua được)
             if (!book.GiaBan || book.GiaBan <= 0) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Sách '${book.TenSach}' không được bán (Chưa có giá).` });
+                await transaction.rollback(); return res.status(400).json({ message: `Sách này không bán.` });
             }
-
             if (book.SoLuongTon < quantity) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Kho không đủ hàng để bán.` });
+                await transaction.rollback(); return res.status(400).json({ message: `Kho không đủ hàng.` });
             }
 
-            // 2. Lấy hoặc Tạo Giỏ Mua Hàng (GioHang)
-            let gioHangResult = await transaction.request().query`SELECT MaGH, TamTinh FROM GioHang WHERE MaDG = ${maDG}`;
+            // 2. Lấy/Tạo Giỏ
+            let gioHangResult = await transaction.request().query`SELECT MaGH FROM GioHang WHERE MaDG = ${maDG}`;
             let maGioHang;
-
             if (!gioHangResult.recordset.length) {
-                // Tạo mã Giỏ Hàng mới (Hàm getUniqueId phải có sẵn)
                 const newMaGH = await getUniqueId(transaction.request(), "GH", "GioHang", "MaGH");
-                
-                // Tạo giỏ mới với TamTinh = 0
-                await transaction.request().query`
-                    INSERT INTO GioHang (MaGH, MaDG, TamTinh) VALUES (${newMaGH}, ${maDG}, 0)
-                `;
+                await transaction.request().query`INSERT INTO GioHang (MaGH, MaDG, TamTinh) VALUES (${newMaGH}, ${maDG}, 0)`;
                 maGioHang = newMaGH;
             } else {
                 maGioHang = gioHangResult.recordset[0].MaGH;
             }
 
-            // 3. Thêm vào Chi Tiết Giỏ (GioHang_Sach) - KHÔNG LƯU ĐƠN GIÁ Ở ĐÂY
-            const existingItem = await transaction.request().query`
-                SELECT * FROM GioHang_Sach WHERE MaGH = ${maGioHang} AND MaSach = ${bookId}
-            `;
-
+            // 3. Thêm vào chi tiết (Không lưu Đơn giá)
+            const existingItem = await transaction.request().query`SELECT * FROM GioHang_Sach WHERE MaGH = ${maGioHang} AND MaSach = ${bookId}`;
             if (existingItem.recordset.length > 0) {
-                // Đã có -> Cộng dồn số lượng
-                await transaction.request().query`
-                    UPDATE GioHang_Sach 
-                    SET SoLuong = SoLuong + ${quantity} 
-                    WHERE MaGH = ${maGioHang} AND MaSach = ${bookId}
-                `;
+                await transaction.request().query`UPDATE GioHang_Sach SET SoLuong = SoLuong + ${quantity} WHERE MaGH = ${maGioHang} AND MaSach = ${bookId}`;
             } else {
-                // Chưa có -> Thêm mới (Chỉ lưu MaGH, MaSach, SoLuong)
-                // ⚠️ Đã bỏ cột DonGia để fix lỗi
-                await transaction.request().query`
-                    INSERT INTO GioHang_Sach (MaGH, MaSach, SoLuong) 
-                    VALUES (${maGioHang}, ${bookId}, ${quantity})
-                `;
+                await transaction.request().query`INSERT INTO GioHang_Sach (MaGH, MaSach, SoLuong) VALUES (${maGioHang}, ${bookId}, ${quantity})`;
             }
 
-            // 4. Cập nhật lại "Tạm Tính" cho cả Giỏ Hàng
-            // Logic: Tính tổng (SoLuong * GiaBan) của tất cả sách trong giỏ này
-            await transaction.request().query`
-                UPDATE GioHang 
-                SET TamTinh = (
-                    SELECT SUM(ghs.SoLuong * s.GiaBan)
-                    FROM GioHang_Sach ghs
-                    JOIN Sach s ON ghs.MaSach = s.MaSach
-                    WHERE ghs.MaGH = ${maGioHang}
-                )
-                WHERE MaGH = ${maGioHang}
-            `;
+            // 4. 🔥 DÙNG HELPER ĐỂ TÍNH TIỀN
+            await _recalculatePurchaseCart(transaction, maGioHang);
 
             await transaction.commit();
-            console.log("✅ [PURCHASE] Thêm giỏ mua thành công!");
-            res.json({ code: 200, message: 'Thêm vào giỏ mua thành công!' });
+            res.json({ code: 200, message: 'Thêm vào giỏ thành công!' });
 
         } catch (error) {
-            if (transaction._aborted === false) {
-                try { await transaction.rollback(); } catch (e) {}
-            }
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
             console.error('❌ Lỗi thêm giỏ mua:', error);
             res.status(500).json({ message: 'Lỗi hệ thống: ' + error.message });
         }
@@ -507,78 +406,54 @@ const cartController = {
     updatePurchaseCartItem: async (req, res) => {
         const transaction = new sql.Transaction();
         try {
-            // 1. Lấy tham số (Hỗ trợ cả MaSach/maSach cho an toàn)
             const { maSach, MaSach, soLuong, SoLuong } = req.body;
             const bookId = MaSach || maSach;
             const quantity = parseInt(SoLuong || soLuong);
             const maDG = req.user.MaDG;
 
             if (!bookId) return res.status(400).json({ message: 'Thiếu mã sách.' });
-            if (isNaN(quantity) || quantity < 1) return res.status(400).json({ message: 'Số lượng không hợp lệ' });
 
             await transaction.begin();
-
-            // 2. Lấy Giỏ Hàng
             const gio = await transaction.request().query`SELECT MaGH FROM GioHang WHERE MaDG = ${maDG}`;
-            if (!gio.recordset.length) { 
-                await transaction.rollback(); 
-                return res.status(404).json({ message: 'Không tìm thấy giỏ mua hàng.' }); 
-            }
+            if (!gio.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Không tìm thấy giỏ.' }); }
             const maGH = gio.recordset[0].MaGH;
 
-            // 3. Kiểm tra sách có trong giỏ không
-            const item = await transaction.request().query`SELECT * FROM GioHang_Sach WHERE MaGH = ${maGH} AND MaSach = ${bookId}`;
-            if (!item.recordset.length) { 
-                await transaction.rollback(); 
-                return res.status(404).json({ message: 'Sách này không có trong giỏ.' }); 
+            // 🔥 TỰ ĐỘNG XÓA NẾU SỐ LƯỢNG <= 0
+            if (quantity <= 0) {
+                await transaction.request().query`DELETE FROM GioHang_Sach WHERE MaGH = ${maGH} AND MaSach = ${bookId}`;
+                // Tính lại tiền sau khi xóa
+                const result = await _recalculatePurchaseCart(transaction, maGH);
+                await transaction.commit();
+                return res.json({ 
+                    code: 200, 
+                    data: { tongSoLuongMoi: result.tongSL, tamTinhMoi: result.newTamTinh }, 
+                    message: 'Đã xóa sách khỏi giỏ.' 
+                });
             }
 
-            // 4. Kiểm tra tồn kho
+            // Logic Update bình thường
+            const item = await transaction.request().query`SELECT * FROM GioHang_Sach WHERE MaGH = ${maGH} AND MaSach = ${bookId}`;
+            if (!item.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Sách không có trong giỏ.' }); }
+
             const stock = await transaction.request().query`SELECT SoLuongTon FROM Sach WHERE MaSach = ${bookId}`;
             if (quantity > stock.recordset[0].SoLuongTon) {
-                await transaction.rollback();
-                return res.status(400).json({ message: `Không đủ hàng (Kho còn: ${stock.recordset[0].SoLuongTon}).` });
+                await transaction.rollback(); return res.status(400).json({ message: `Không đủ hàng (Kho còn: ${stock.recordset[0].SoLuongTon}).` });
             }
 
-            // 5. Cập nhật số lượng mới
-            await transaction.request().query`
-                UPDATE GioHang_Sach 
-                SET SoLuong = ${quantity} 
-                WHERE MaGH = ${maGH} AND MaSach = ${bookId}
-            `;
-
-            // 6. Tính lại Tạm Tính (FIX LỖI Ở ĐÂY)
-            // Phải JOIN với bảng Sach để lấy GiaBan
-            const cartTotal = await transaction.request().query`
-                SELECT SUM(ghs.SoLuong * s.GiaBan) as NewTamTinh 
-                FROM GioHang_Sach ghs
-                JOIN Sach s ON ghs.MaSach = s.MaSach
-                WHERE ghs.MaGH = ${maGH}
-            `;
+            await transaction.request().query`UPDATE GioHang_Sach SET SoLuong = ${quantity} WHERE MaGH = ${maGH} AND MaSach = ${bookId}`;
             
-            const newTamTinh = cartTotal.recordset[0].NewTamTinh || 0;
-            
-            // Cập nhật lại bảng GioHang
-            await transaction.request().query`UPDATE GioHang SET TamTinh = ${newTamTinh} WHERE MaGH = ${maGH}`;
-
-            // Lấy tổng số lượng item để trả về (nếu cần hiển thị badge giỏ hàng)
-            const countResult = await transaction.request().query`SELECT SUM(SoLuong) as TongSoLuong FROM GioHang_Sach WHERE MaGH = ${maGH}`;
+            // 4. 🔥 DÙNG HELPER ĐỂ TÍNH TIỀN
+            const result = await _recalculatePurchaseCart(transaction, maGH);
 
             await transaction.commit();
-            
             res.json({ 
                 code: 200, 
-                data: { 
-                    tongSoLuongMoi: countResult.recordset[0].TongSoLuong, 
-                    tamTinhMoi: newTamTinh 
-                }, 
-                message: 'Cập nhật giỏ hàng thành công.' 
+                data: { tongSoLuongMoi: result.tongSL, tamTinhMoi: result.newTamTinh }, 
+                message: 'Cập nhật thành công.' 
             });
 
         } catch (error) {
-            if (transaction._aborted === false) {
-                try { await transaction.rollback(); } catch (e) {}
-            }
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
             console.error('❌ Lỗi update giỏ mua:', error);
             res.status(500).json({ code: 500, message: 'Lỗi server: ' + error.message });
         }
@@ -591,49 +466,24 @@ const cartController = {
             const maDG = req.user.MaDG;
 
             await transaction.begin();
-
-            // 1. Lấy Giỏ Hàng
             const gio = await transaction.request().query`SELECT MaGH FROM GioHang WHERE MaDG = ${maDG}`;
-            if (!gio.recordset.length) { 
-                await transaction.rollback(); 
-                return res.status(404).json({ message: 'Không tìm thấy giỏ.' }); 
-            }
+            if (!gio.recordset.length) { await transaction.rollback(); return res.status(404).json({ message: 'Không tìm thấy giỏ.' }); }
             const maGH = gio.recordset[0].MaGH;
 
-            // 2. Xóa sách khỏi chi tiết giỏ
             await transaction.request().query`DELETE FROM GioHang_Sach WHERE MaGH = ${maGH} AND MaSach = ${maSach}`;
 
-            // 3. Tính lại Tạm Tính (FIX LỖI Ở ĐÂY)
-            // Phải JOIN với bảng Sach để lấy giá bán (GiaBan) thay vì DonGia ảo
-            const cartTotal = await transaction.request().query`
-                SELECT SUM(ghs.SoLuong * s.GiaBan) as NewTamTinh 
-                FROM GioHang_Sach ghs
-                JOIN Sach s ON ghs.MaSach = s.MaSach
-                WHERE ghs.MaGH = ${maGH}
-            `;
-            const newTamTinh = cartTotal.recordset[0].NewTamTinh || 0;
-
-            // 4. Cập nhật lại bảng GioHang
-            await transaction.request().query`UPDATE GioHang SET TamTinh = ${newTamTinh} WHERE MaGH = ${maGH}`;
-
-            // 5. Đếm lại tổng số lượng sách còn lại
-            const countResult = await transaction.request().query`SELECT SUM(SoLuong) as TongSoLuong FROM GioHang_Sach WHERE MaGH = ${maGH}`;
+            // 4. 🔥 DÙNG HELPER ĐỂ TÍNH TIỀN
+            const result = await _recalculatePurchaseCart(transaction, maGH);
 
             await transaction.commit();
-            
             res.json({ 
                 code: 200, 
-                data: { 
-                    tongSoLuongMoi: countResult.recordset[0].TongSoLuong || 0, 
-                    tamTinhMoi: newTamTinh 
-                }, 
+                data: { tongSoLuongMoi: result.tongSL, tamTinhMoi: result.newTamTinh }, 
                 message: 'Xóa thành công.' 
             });
 
         } catch (error) {
-            if (transaction._aborted === false) {
-                try { await transaction.rollback(); } catch (e) {}
-            }
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
             console.error('❌ Lỗi xóa giỏ mua:', error);
             res.status(500).json({ code: 500, message: 'Lỗi server: ' + error.message });
         }
@@ -643,32 +493,17 @@ const cartController = {
         const transaction = new sql.Transaction();
         try {
             const maDG = req.user.MaDG;
-            
             await transaction.begin();
-
-            // 1. Lấy mã Giỏ Hàng
             const gio = await transaction.request().query`SELECT MaGH FROM GioHang WHERE MaDG = ${maDG}`;
-            
             if (gio.recordset.length) {
                 const maGH = gio.recordset[0].MaGH;
-
-                // 2. Xóa sạch chi tiết sách trong giỏ
                 await transaction.request().query`DELETE FROM GioHang_Sach WHERE MaGH = ${maGH}`;
-
-                // 3. Reset tổng tiền (TamTinh) về 0 thay vì xóa luôn giỏ
-                // Giữ lại cái "vỏ" giỏ hàng để lần sau dùng tiếp
                 await transaction.request().query`UPDATE GioHang SET TamTinh = 0 WHERE MaGH = ${maGH}`;
             }
-            
             await transaction.commit();
-            
-            // Trả về 200 OK để Frontend dễ xử lý (hoặc 204 No Content)
             res.json({ code: 200, message: 'Giỏ hàng đã được làm trống.' });
-
         } catch (error) {
-            if (transaction._aborted === false) {
-                try { await transaction.rollback(); } catch (e) {}
-            }
+            if (transaction._aborted === false) try { await transaction.rollback(); } catch (e) {}
             console.error('❌ Lỗi clear giỏ mua:', error);
             res.status(500).json({ code: 500, message: 'Lỗi server: ' + error.message });
         }

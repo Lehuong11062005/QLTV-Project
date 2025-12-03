@@ -1,0 +1,21 @@
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 9999;
+}
+.modal-content {
+    background: white; padding: 20px; border-radius: 12px;
+    width: 90%; max-width: 400px; text-align: center;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.btn-close-icon { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; }
+.qr-container img { width: 100%; max-width: 280px; border: 1px solid #eee; border-radius: 8px; margin: 10px 0; }
+.bank-info { background: #f3f4f6; padding: 10px; border-radius: 8px; text-align: left; font-size: 0.95rem; margin-bottom: 10px; }
+.bank-info p { margin: 5px 0; }
+.text-red { color: #dc2626; font-weight: bold; }
+.modal-footer { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+.btn-confirm { background: #10b981; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+.btn-confirm:hover { background: #059669; }
+.btn-cancel { background: transparent; color: #6b7280; border: none; cursor: pointer; font-size: 0.9rem; }

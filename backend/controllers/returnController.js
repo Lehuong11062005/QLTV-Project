@@ -7,28 +7,25 @@ const { getUniqueId } = require("../utils/dbUtils");
 // ============================================================
 
 /**
- * @description Xử lý trả sách, tính phạt và cập nhật kho (ĐÃ SỬA LỖI LOGIC)
+ * @description Xử lý trả sách, tính phạt và TỰ ĐỘNG THU TIỀN (Cash)
  * @route POST /api/return
  */
 exports.returnBook = async (req, res) => {
-    let transaction; // Khai báo bên ngoài để catch có thể rollback
+    let transaction;
     try {
-        // 1. Dữ liệu từ Client gửi lên
+        // 1. Dữ liệu từ Client
         const { maMuon, sachTra } = req.body; 
-        // Lấy ID thủ thư (hỗ trợ nhiều kiểu token)
-        const maTT = req.user.MaTT || req.user.UserId || req.user.userId; 
+        const maTT = req.user.MaTT || req.user.UserId; 
 
         if (!maMuon || !sachTra || sachTra.length === 0) {
             return res.status(400).json({ message: "Thiếu thông tin trả sách." });
         }
 
-        // 🔥 QUAN TRỌNG: Kết nối Pool trước khi tạo Transaction
         const pool = await sql.connect(config);
         transaction = new sql.Transaction(pool);
-
         await transaction.begin();
 
-        // 2. Tính tổng tiền phạt của lần trả này
+        // 2. Tính tổng tiền phạt
         const tongTienPhat = sachTra.reduce((total, item) => {
             return total + (Number(item.tienPhat) || 0) + (Number(item.tienDenBu) || 0);
         }, 0);
@@ -46,9 +43,42 @@ exports.returnBook = async (req, res) => {
                 VALUES (@MaTra, @MaMuon, @MaTT, GETDATE(), @TongTienPhat)
             `);
 
-        // 4. Xử lý chi tiết từng cuốn sách
+        // =========================================================================
+        // 🔥 ĐOẠN CODE MỚI: TỰ ĐỘNG GHI NHẬN THANH TOÁN TIỀN MẶT
+        // =========================================================================
+        if (tongTienPhat > 0) {
+            // Tạo mã giao dịch ảo
+            const maTT_ThanhToan = `CASH${Date.now().toString().slice(-6)}`; 
+            const maGiaoDich = `FINE_${maTra}`; // Mã tham chiếu
+
+            await transaction.request()
+                .input("MaTT_ThanhToan", sql.VarChar(10), maTT_ThanhToan)
+                .input("MaTra", sql.VarChar(10), maTra)
+                .input("TongTienPhat", sql.Decimal(18, 0), tongTienPhat)
+                .input("MaGiaoDich", sql.VarChar(100), maGiaoDich)
+                .query(`
+                    INSERT INTO ThanhToan (
+                        MaTT, MaPhat, PhuongThuc, SoTien, 
+                        TrangThai, MaGiaoDich, NgayThanhToan, LoaiGiaoDich
+                    )
+                    VALUES (
+                        @MaTT_ThanhToan, 
+                        @MaTra,       -- Link tới phiếu trả vừa tạo
+                        N'TienMat',   -- Phương thức là Tiền Mặt (hoặc COD)
+                        @TongTienPhat, 
+                        N'HoanThanh', -- Mặc định là đã thu tiền xong
+                        @MaGiaoDich, 
+                        GETDATE(), 
+                        'PhiPhat'     -- Đánh dấu đây là tiền phạt
+                    )
+                `);
+            console.log(`✅ Đã thu tiền phạt tại quầy cho phiếu ${maTra}: ${tongTienPhat} VNĐ`);
+        }
+        // =========================================================================
+
+        // 4. Xử lý chi tiết sách (TraSach_Sach & BanSao_ThuVien & Kho)
         for (const item of sachTra) {
-            // a. Lưu chi tiết trả vào TraSach_Sach
+            // a. Insert chi tiết trả
             await transaction.request()
                 .input("MaTra", sql.VarChar(10), maTra)
                 .input("MaBanSao", sql.VarChar(15), item.maBanSao)
@@ -60,21 +90,19 @@ exports.returnBook = async (req, res) => {
                     VALUES (@MaTra, @MaBanSao, @TienPhat, @TienDenBu, @LyDo)
                 `);
 
-            // b. Cập nhật trạng thái Bản Sao
+            // b. Update trạng thái bản sao
             let trangThaiMoi = 'SanSang';
             if (item.isHuHong) trangThaiMoi = 'HuHong';
-            // Nếu mất sách thì trangThaiMoi = 'Mat' (Tùy logic của bạn)
+            if (item.isMatSach) trangThaiMoi = 'Mat'; // Thêm logic Mất sách nếu cần
 
             await transaction.request()
                 .input("MaBanSao", sql.VarChar(15), item.maBanSao)
                 .input("TrangThai", sql.NVarChar(50), trangThaiMoi)
                 .query(`
-                    UPDATE BanSao_ThuVien 
-                    SET TrangThaiBanSao = @TrangThai 
-                    WHERE MaBanSao = @MaBanSao
+                    UPDATE BanSao_ThuVien SET TrangThaiBanSao = @TrangThai WHERE MaBanSao = @MaBanSao
                 `);
 
-            // c. Cập nhật Tồn kho Sách Gốc (Nếu sách trả lại dùng được)
+            // c. Update tồn kho sách gốc (Chỉ tăng lại nếu sách Sẵn Sàng)
             if (trangThaiMoi === 'SanSang') {
                 const banSaoInfo = await transaction.request()
                     .input("MaBanSao", sql.VarChar(15), item.maBanSao)
@@ -89,26 +117,20 @@ exports.returnBook = async (req, res) => {
             }
         }
 
-        // 5. Kiểm tra xem đã trả hết sách chưa để đóng phiếu
-        // B1: Đếm tổng số sách trong phiếu mượn
-        const countBorrowQuery = await transaction.request()
+        // 5. Kiểm tra hoàn tất phiếu mượn
+        const countBorrow = await transaction.request()
             .input("MaMuon", sql.VarChar(10), maMuon)
             .query("SELECT COUNT(*) as Total FROM MuonSach_Sach WHERE MaMuon = @MaMuon");
-        const totalBorrowed = countBorrowQuery.recordset[0].Total;
-
-        // B2: Đếm tổng số sách ĐÃ TRẢ của phiếu này
-        const countReturnQuery = await transaction.request()
+        
+        const countReturn = await transaction.request()
             .input("MaMuon", sql.VarChar(10), maMuon)
             .query(`
-                SELECT COUNT(*) as Returned 
-                FROM TraSach_Sach TSS
+                SELECT COUNT(*) as Returned FROM TraSach_Sach TSS
                 JOIN TraSach TS ON TSS.MaTra = TS.MaTra
                 WHERE TS.MaMuon = @MaMuon
             `);
-        const totalReturned = countReturnQuery.recordset[0].Returned;
 
-        // B3: Nếu trả hết thì cập nhật trạng thái phiếu
-        if (totalReturned >= totalBorrowed) {
+        if (countReturn.recordset[0].Returned >= countBorrow.recordset[0].Total) {
             await transaction.request()
                 .input("MaMuon", sql.VarChar(10), maMuon)
                 .query("UPDATE MuonSach SET TrangThai = N'DaTraHet' WHERE MaMuon = @MaMuon");
@@ -118,7 +140,7 @@ exports.returnBook = async (req, res) => {
 
         res.status(200).json({
             code: 200,
-            message: "Trả sách thành công!",
+            message: "Trả sách thành công! (Đã ghi nhận thu tiền phạt)",
             data: { maTra, tongTienPhat }
         });
 
@@ -128,7 +150,6 @@ exports.returnBook = async (req, res) => {
         res.status(500).json({ message: "Lỗi xử lý trả sách.", error: error.message });
     }
 };
-
 /**
  * @description Lấy danh sách lịch sử trả sách (Admin)
  * @route GET /api/return/history
