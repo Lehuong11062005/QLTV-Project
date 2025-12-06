@@ -37,28 +37,58 @@ const getUniqueId = async (pool, prefix, tableName, idColumn) => {
 // A. QUẢN LÝ ĐỘC GIẢ (CRUD)
 // ============================================================
 
-// Lấy danh sách tất cả độc giả
 exports.getAllDocGia = async (req, res) => {
     try {
         const pool = await sql.connect(config);
-        const result = await pool.request().query(`
+        
+        const query = `
             SELECT 
-                DG.MaDG, DG.HoTen, DG.Email, DG.SDT, DG.DiaChi, DG.TrangThaiThe, 
-                DG.TongPhatChuaThanhToan, -- Đã thêm: Cột mới từ Database Schema
-                TK.TenDangNhap, TK.TrangThai AS TaiKhoanTrangThai,
-                (SELECT COUNT(*) FROM MuonSach MS WHERE MS.MaDG = DG.MaDG AND MS.TrangThai IN (N'DangMuon', N'QuaHan')) AS SoSachDangMuon,
+                DG.MaDG, 
+                DG.HoTen, 
+                DG.Email, 
+                DG.SDT, 
+                DG.DiaChi, 
+                DG.TrangThaiThe, 
+                ISNULL(DG.TongPhatChuaThanhToan, 0) AS TongPhatChuaThanhToan, -- Xử lý null thành 0
+                TK.TenDangNhap, 
+                TK.TrangThai AS TaiKhoanTrangThai,
+
+                -- 1. Đếm số sách đang giữ (Gồm Đã duyệt và Quá hạn)
+                (SELECT COUNT(*) 
+                 FROM MuonSach MS 
+                 WHERE MS.MaDG = DG.MaDG 
+                 AND MS.TrangThai IN (N'DaDuyet', N'QuaHan')) AS SoSachDangMuon,
+
+                -- 2. Xác định trạng thái mượn (Ưu tiên hiển thị Quá hạn trước)
                 CASE 
-                    WHEN EXISTS (SELECT 1 FROM MuonSach MS WHERE MS.MaDG = DG.MaDG AND MS.TrangThai = N'QuaHan') THEN N'Quá hạn trả'
-                    WHEN EXISTS (SELECT 1 FROM MuonSach MS WHERE MS.MaDG = DG.MaDG AND MS.TrangThai = N'DangMuon') THEN N'Đang mượn'
+                    WHEN EXISTS (
+                        SELECT 1 FROM MuonSach MS 
+                        WHERE MS.MaDG = DG.MaDG AND MS.TrangThai = N'QuaHan'
+                    ) THEN N'Quá hạn trả'
+                    
+                    WHEN EXISTS (
+                        SELECT 1 FROM MuonSach MS 
+                        WHERE MS.MaDG = DG.MaDG AND MS.TrangThai = N'DaDuyet'
+                    ) THEN N'Đang mượn'
+                    
                     ELSE N'Không mượn'
                 END AS TrangThaiMuon
+
             FROM DocGia DG
-            JOIN TaiKhoan TK ON DG.MaTK = TK.MaTK
-        `);
-        res.json(result.recordset);
+            LEFT JOIN TaiKhoan TK ON DG.MaTK = TK.MaTK -- Dùng LEFT JOIN để lấy cả độc giả chưa có TK
+            ORDER BY DG.MaDG DESC; -- Sắp xếp mới nhất lên đầu
+        `;
+
+        const result = await pool.request().query(query);
+        
+        res.status(200).json(result.recordset);
+
     } catch (err) {
         console.error('Lỗi lấy danh sách độc giả:', err);
-        res.status(500).json({ message: 'Lỗi server khi lấy danh sách độc giả.' });
+        res.status(500).json({ 
+            message: 'Lỗi server khi lấy danh sách độc giả.',
+            error: err.message 
+        });
     }
 };
 

@@ -2,11 +2,11 @@
 import React, { useState, useEffect } from "react";
 import Layout from "../../components/Layout";
 import { 
-    getAllDocGia,        // ⭐️ SỬA: Dùng Named Import
+    getAllDocGia, 
     addDocGia, 
     updateDocGia, 
     updateDocGiaStatus 
-} from "../../services/adminService"; // Import các hàm trực tiếp
+} from "../../services/adminService"; 
 import "./UserManagement.css"; 
 
 // ============================================================
@@ -36,7 +36,6 @@ const ReaderFormModal = ({ reader, onSave, onClose, isSubmitting }) => {
             dataToSend.MatKhau = formData.MatKhau;
         }
 
-        // Cập nhật/Thêm mới độc giả
         onSave(dataToSend, isEditMode ? formData.MaDG : null);
     };
 
@@ -101,7 +100,7 @@ const ReaderFormModal = ({ reader, onSave, onClose, isSubmitting }) => {
 
 
 // ============================================================
-// COMPONENT UserManagement
+// COMPONENT MAIN: UserManagement
 // ============================================================
 export default function UserManagement() {
     const [readerList, setReaderList] = useState([]);
@@ -111,223 +110,261 @@ export default function UserManagement() {
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentReader, setCurrentReader] = useState(null); 
+    
+    // State cho bộ lọc
     const [filterStatus, setFilterStatus] = useState('all'); 
+    // ⭐️ MỚI: State cho ô tìm kiếm
+    const [searchTerm, setSearchTerm] = useState(''); 
 
     // 1. Tải danh sách độc giả từ CSDL
     useEffect(() => {
-        fetchReaders(filterStatus);
-    }, [filterStatus]);
+        fetchReaders();
+    }, []); // Chỉ tải 1 lần lúc đầu, sau đó client tự filter
 
-    const fetchReaders = async (status) => {
+    const fetchReaders = async () => {
         setIsLoading(true);
         setError(null);
         try {
-            // ⭐️ SỬA: Gọi hàm trực tiếp
             const response = await getAllDocGia(); 
             setReaderList(response.data); 
         } catch (err) {
             console.error("Lỗi tải độc giả:", err);
-            setError("Không thể tải danh sách Độc giả từ CSDL. Vui lòng kiểm tra kết nối API.");
+            setError("Không thể tải danh sách Độc giả. Vui lòng kiểm tra API.");
             setReaderList([]);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // 2. Xử lý Mở Modal Thêm/Sửa
+    // 2. Mở Modal
     const handleOpenModal = (reader = null) => {
         setCurrentReader(reader || { 
-            HoTen: '', 
-            TenDangNhap: '',
-            Email: '', 
-            SDT: '', 
-            DiaChi: '',
-            MatKhau: '' 
+            HoTen: '', TenDangNhap: '', Email: '', SDT: '', DiaChi: '', MatKhau: '' 
         });
         setIsModalOpen(true);
     };
 
-    // 3. Xử lý Thêm/Sửa độc giả (CRUD)
+    // 3. Lưu (Thêm/Sửa)
     const handleSaveReader = async (readerData, maDG) => {
         const isEditMode = !!maDG;
-        
         setIsSubmitting(true);
         setError(null);
 
         try {
             if (isEditMode) {
-                // ⭐️ SỬA: Gọi hàm trực tiếp
                 await updateDocGia(maDG, readerData);
-                alert(`Đã cập nhật thông tin Độc giả: ${readerData.HoTen}`);
+                alert(`Đã cập nhật: ${readerData.HoTen}`);
             } else {
-                // ⭐️ SỬA: Gọi hàm trực tiếp
                 await addDocGia(readerData);
-                alert(`Đã tạo tài khoản Độc giả mới: ${readerData.TenDangNhap}`);
+                alert(`Đã tạo mới: ${readerData.TenDangNhap}`);
             }
-            
             setIsModalOpen(false);
-            await fetchReaders(filterStatus); 
-
+            await fetchReaders(); 
         } catch (err) {
-            console.error("Lỗi Lưu độc giả:", err);
-            setError(err.response?.data?.message || 'Lỗi khi lưu độc giả. Vui lòng kiểm tra API (ví dụ: Tên đăng nhập đã tồn tại).');
+            console.error("Lỗi Lưu:", err);
+            setError(err.response?.data?.message || 'Lỗi khi lưu dữ liệu.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    // 4. Xử lý Khóa/Kích hoạt Thẻ độc giả (Trạng thái Thẻ)
+    // 4. Khóa/Mở khóa thẻ
     const handleToggleStatus = async (MaDG, TrangThaiHienTai) => {
-        const currentActiveStatus = TrangThaiHienTai === 'Hoạt động' ? 'Hoạt động' : 'Khóa';
-        const newStatusForController = currentActiveStatus === 'Hoạt động' ? 'Khóa' : 'Hoạt động';
+        const isLocked = TrangThaiHienTai === 'Khóa' || TrangThaiHienTai === 'Hết hạn thẻ';
+        const newStatus = isLocked ? 'Hoạt động' : 'Khóa';
         
-        if (!window.confirm(`Bạn có chắc chắn muốn ${newStatusForController === 'Khóa' ? 'KHÓA' : 'KÍCH HOẠT'} thẻ độc giả "${MaDG}"?`)) {
-            return;
-        }
+        if (!window.confirm(`Bạn muốn ${newStatus === 'Khóa' ? 'KHÓA' : 'KÍCH HOẠT'} độc giả "${MaDG}"?`)) return;
         
         setIsSubmitting(true);
         try {
-            // ⭐️ SỬA: Gọi hàm trực tiếp
-            await updateDocGiaStatus(MaDG, { TrangThaiThe: newStatusForController });
-            
-            setReaderList(readerList.map(r => 
-                r.MaDG === MaDG ? { ...r, TrangThaiThe: newStatusForController } : r
-            ));
-            alert(`Đã ${newStatusForController === 'Khóa' ? 'Khóa' : 'Kích hoạt'} thẻ độc giả ${MaDG} thành công.`);
-            
+            await updateDocGiaStatus(MaDG, { TrangThaiThe: newStatus });
+            setReaderList(readerList.map(r => r.MaDG === MaDG ? { ...r, TrangThaiThe: newStatus } : r));
         } catch (err) {
-            console.error("Lỗi cập nhật trạng thái:", err);
-            setError(err.response?.data?.message || 'Không thể cập nhật trạng thái thẻ.');
+            alert(err.response?.data?.message || 'Lỗi cập nhật trạng thái.');
         } finally {
             setIsSubmitting(false);
         }
     };
     
-    // Hàm hỗ trợ style trạng thái mượn
+    // Style hỗ trợ
     const getBorrowStatusStyle = (status) => {
         switch (status) {
             case "Quá hạn trả": return { color: "#dc2626", fontWeight: "bold" };
-            case "Còn hạn": return { color: "#16a34a", fontWeight: "bold" };
             case "Đang mượn": return { color: "#f59e0b", fontWeight: "bold" };
-            case "Hết hạn mượn": return { color: "#9d174d", fontWeight: "bold" };
-            default: return {};
+            case "Không mượn": return { color: "#10b981", fontWeight: "bold" };
+            default: return { color: "#6b7280" };
         }
     };
 
-    // Hàm hỗ trợ style trạng thái thẻ (badge)
     const getCardStatusClass = (status) => {
-        switch (status) {
-            case "Khóa": 
-            case "Hết hạn thẻ":
-                return "card-status-locked";
-            case "Hoạt động": 
-            case "ConHan": 
-                return "card-status-active";
-            default: return "card-status-other";
-        }
-    };
+    // Chuẩn hóa input để tránh lỗi font chữ hoa/thường
+    const s = status ? status.toLowerCase() : '';
 
-
-    if (isLoading) {
-        return <Layout><h2 style={{color: '#3b82f6'}}>Đang tải dữ liệu Độc giả...</h2></Layout>;
+    if (s.includes('hoạt động') || s.includes('hoatdong')) {
+        return "status-badge status-active"; // 🟢 Xanh lá
     }
+    if (s.includes('conhan') || s.includes('còn hạn')) {
+        return "status-badge status-valid";  // 🔵 Xanh dương
+    }
+    if (s.includes('chokichhoat') || s.includes('chờ kích hoạt')) {
+        return "status-badge status-pending"; // 🟠 Cam
+    }
+    if (s.includes('khóa') || s.includes('khoa') || s.includes('hết hạn')) {
+        return "status-badge status-locked";  // 🔴 Đỏ
+    }
+    
+    return "status-badge status-default"; // Mặc định màu xám
+};
 
-    // Lọc dữ liệu trên client dựa trên filterStatus (nếu API không hỗ trợ server-side filter)
+    // --- ⭐️ LOGIC LỌC DỮ LIỆU (Client-side) ---
     const filteredReaders = readerList.filter(reader => {
-        if (filterStatus === 'all') return true;
-        if (filterStatus === 'overdue') return reader.TrangThaiMuon === 'Quá hạn trả';
-        if (filterStatus === 'expired') return reader.TrangThaiMuon === 'Hết hạn mượn';
-        if (filterStatus === 'borrowing') return reader.TrangThaiMuon !== 'Không mượn';
-        if (filterStatus === 'active') return reader.TrangThaiMuon === 'Còn hạn' || reader.TrangThaiMuon === 'Không mượn';
-        return true;
+        const status = reader.TrangThaiMuon; 
+        
+        // 1. Lọc theo trạng thái Dropdown
+        let matchStatus = false;
+        if (filterStatus === 'all') matchStatus = true;
+        else if (filterStatus === 'overdue') matchStatus = status === 'Quá hạn trả';
+        else if (filterStatus === 'borrowing') matchStatus = status === 'Đang mượn' || status === 'Quá hạn trả';
+        else if (filterStatus === 'active') matchStatus = status === 'Không mượn';
+
+        // 2. Lọc theo ô Tìm kiếm (Mã ĐG hoặc Họ Tên)
+        // Chuyển hết về chữ thường để tìm kiếm không phân biệt hoa/thường
+        const lowerTerm = searchTerm.toLowerCase();
+        const matchSearch = 
+            (reader.MaDG && reader.MaDG.toLowerCase().includes(lowerTerm)) || 
+            (reader.HoTen && reader.HoTen.toLowerCase().includes(lowerTerm));
+
+        // Kết hợp cả 2 điều kiện
+        return matchStatus && matchSearch;
     });
 
+    if (isLoading) return <Layout><h2 style={{color: '#3b82f6'}}>Đang tải dữ liệu...</h2></Layout>;
 
     return (
         <Layout>
             <h2 style={{ borderBottom: "2px solid #ccc", paddingBottom: "10px" }}>
-                👥 Quản lý Độc giả (User Management - Bảng DocGia)
+                👥 Quản lý Độc giả
             </h2>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                    <p>Tổng số độc giả: <span style={{fontWeight: 'bold', color: '#1f2937'}}>{filteredReaders.length}</span></p>
-                    <label style={{ fontWeight: 'bold' }}>Lọc Trạng thái Mượn:</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    
+                    {/* Ô TÌM KIẾM MỚI */}
+                    <div style={{position: 'relative'}}>
+                        <input 
+                            type="text" 
+                            placeholder="🔍 Tìm Mã ĐG hoặc Họ tên..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{
+                                padding: "8px 12px", 
+                                borderRadius: "4px", 
+                                border: "1px solid #9ca3af",
+                                width: "250px"
+                            }}
+                        />
+                        {searchTerm && (
+                            <span 
+                                onClick={() => setSearchTerm('')}
+                                style={{
+                                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', 
+                                    cursor: 'pointer', color: '#999', fontWeight: 'bold'
+                                }}
+                            >✕</span>
+                        )}
+                    </div>
+
                     <select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        style={{ padding: "8px 12px", borderRadius: "4px", border: "1px solid #ccc" }}
-                        disabled={isSubmitting}
+                        style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
                     >
-                        <option value="all">Tất cả</option>
-                        <option value="active">Còn hạn</option>
-                        <option value="overdue">Quá hạn trả</option>
-                        <option value="expired">Hết hạn mượn</option> 
-                        <option value="borrowing">Đang mượn</option>
+                        <option value="all">Tất cả trạng thái</option>
+                        <option value="active">Không nợ sách</option>
+                        <option value="borrowing">Đang mượn sách</option>
+                        <option value="overdue">Đang quá hạn</option>
                     </select>
+
+                    <div style={{fontWeight: '500', color: '#4b5563'}}>
+                        Kết quả: <b>{filteredReaders.length}</b>
+                    </div>
                 </div>
                 
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="btn-primary"
-                    disabled={isSubmitting}
-                >
-                    ➕ Thêm Độc giả Mới
+                <button onClick={() => handleOpenModal()} className="btn-primary" disabled={isSubmitting}>
+                    ➕ Thêm Độc giả
                 </button>
             </div>
-            {error && <p style={{ color: '#dc2626', marginBottom: '15px' }}>{error}</p>}
+
+            {error && <p style={{ color: '#dc2626' }}>{error}</p>}
 
             <table className="admin-table">
                 <thead>
                     <tr>
                         <th>Mã ĐG</th>
-                        <th>Họ tên</th>
-                        <th>Email/SĐT</th>
-                        <th>Sách đang mượn</th>
+                        <th>Thông tin cá nhân</th>
+                        <th>Liên hệ</th>
+                        <th style={{textAlign: 'center'}}>Sách đang giữ</th>
                         <th>Trạng thái Mượn</th>
                         <th>Trạng thái Thẻ</th>
-                        <th style={{ width: '180px', textAlign: 'center' }}>Hành động</th>
+                        <th style={{ textAlign: 'center' }}>Hành động</th>
                     </tr>
                 </thead>
                 <tbody>
                     {filteredReaders.length === 0 ? (
-                         <tr>
-                             <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
-                                 Không tìm thấy độc giả nào phù hợp với bộ lọc.
-                             </td>
-                         </tr>
+                        <tr><td colSpan="7" style={{textAlign: 'center', padding: '20px', color: '#888'}}>
+                            Không tìm thấy độc giả nào khớp với từ khóa "{searchTerm}"
+                        </td></tr>
                     ) : (
                         filteredReaders.map((reader) => (
                             <tr key={reader.MaDG}>
-                                <td>{reader.MaDG}</td>
-                                <td style={{ fontWeight: '500' }}>{reader.HoTen}</td>
-                                <td>{reader.Email} / {reader.SDT}</td>
-                                <td>{reader.SoSachDangMuon || 0}</td>
+                                {/* Highlight từ khóa tìm kiếm trong Mã ĐG nếu cần, ở đây để text thường */}
+                                <td style={{fontWeight: 'bold', color: '#2563eb'}}>{reader.MaDG}</td>
+                                
+                                <td>
+                                    <div style={{fontWeight: 'bold'}}>{reader.HoTen}</div>
+                                    <div style={{fontSize: '12px', color: '#666'}}>@{reader.TenDangNhap || '---'}</div>
+                                </td>
+
+                                <td>
+                                    <div>{reader.Email}</div>
+                                    <div style={{fontSize: '12px'}}>{reader.SDT}</div>
+                                </td>
+
+                                <td style={{textAlign: 'center', fontWeight: 'bold', fontSize: '16px'}}>
+                                    {reader.SoSachDangMuon}
+                                </td>
+
                                 <td>
                                     <span style={getBorrowStatusStyle(reader.TrangThaiMuon)}>
-                                        {reader.TrangThaiMuon || 'Không mượn'}
+                                        {reader.TrangThaiMuon}
                                     </span>
                                 </td>
+
                                 <td>
                                     <span className={getCardStatusClass(reader.TrangThaiThe)}>
                                         {reader.TrangThaiThe}
                                     </span>
                                 </td>
-                                <td style={{ textAlign: "center", width: '180px' }}>
-                                    <button
+                                
+                                <td style={{ textAlign: "center", display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                    <button 
+                                        className="btn-edit" 
                                         onClick={() => handleOpenModal(reader)}
                                         disabled={isSubmitting}
-                                        className="btn-edit"
                                     >
                                         ✏️ Sửa
                                     </button>
+                                    
                                     <button
                                         onClick={() => handleToggleStatus(reader.MaDG, reader.TrangThaiThe)}
                                         disabled={isSubmitting}
                                         className="btn-toggle-status"
-                                        style={{ background: (reader.TrangThaiThe === 'Hoạt động') ? "#dc2626" : "#16a34a"}}
+                                        style={{ 
+                                            background: (reader.TrangThaiThe === 'Hoạt động' || reader.TrangThaiThe === 'ConHan') ? "#dc2626" : "#16a34a",
+                                            color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer'
+                                        }}
                                     >
-                                        {(reader.TrangThaiThe === 'Hoạt động') ? '🔒 Khóa Thẻ' : '🔓 Kích Hoạt'}
+                                        {(reader.TrangThaiThe === 'Hoạt động' || reader.TrangThaiThe === 'ConHan') ? '🔒 Khóa' : '🔓 Mở'}
                                     </button>
                                 </td>
                             </tr>
