@@ -7,25 +7,26 @@ import { addToLoanCart, addToPurchaseCart } from "../../services/cartService";
 import debounce from "lodash.debounce";
 import "./Books.css";
 
+const ITEMS_PER_PAGE = 12; 
+
 export default function Books() {
   const navigate = useNavigate();
 
-  // --- TRẠNG THÁI CHÍNH ---
+  // --- TRẠNG THÁI ---
   const [books, setBooks] = useState([]);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [inputValue, setInputValue] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const [addingToCart, setAddingToCart] = useState({}); 
 
-  // --- FETCH SÁCH ---
+  // --- FETCH API ---
   const fetchBooks = useCallback(async (keyword = "") => {
     setLoading(true);
     setApiError(false);
-
     try {
       let response = await searchBooks({ search: keyword });
-      
       let booksData = [];
       if (response && response.data) {
         if (Array.isArray(response.data)) {
@@ -34,10 +35,10 @@ export default function Books() {
           booksData = response.data.data.filter((item) => item && item.MaSach);
         }
       }
-      
       setBooks(booksData);
+      setCurrentPage(1); 
     } catch (err) {
-      console.error("❌ Lỗi khi tải sách:", err);
+      console.error("❌ Lỗi tải sách:", err);
       setApiError(true);
       setBooks([]);
     } finally {
@@ -45,12 +46,11 @@ export default function Books() {
     }
   }, []);
 
-  // --- FETCH KHI LOAD TRANG ---
   useEffect(() => {
     fetchBooks("");
   }, [fetchBooks]);
 
-  // --- DEBOUNCE TÌM KIẾM ---
+  // --- SEARCH LOGIC (DEBOUNCE) ---
   const debouncedSearch = useCallback(
     debounce((keyword) => {
       setSearchKeyword(keyword);
@@ -59,17 +59,14 @@ export default function Books() {
     [fetchBooks]
   );
 
-  useEffect(() => {
-    return () => {
-      debouncedSearch.cancel();
-    };
-  }, [debouncedSearch]);
+  // Clear debounce khi component unmount
+  useEffect(() => { return () => debouncedSearch.cancel(); }, [debouncedSearch]);
 
   const handleSearchChange = (e) => {
     const value = e.target.value;
     setInputValue(value);
-    
     if (value.trim().length === 0) {
+      debouncedSearch.cancel(); // Hủy tìm kiếm cũ nếu xóa hết tay
       setSearchKeyword("");
       fetchBooks("");
     } else {
@@ -77,242 +74,194 @@ export default function Books() {
     }
   };
 
-  const handleSearchSubmit = (e) => {
-    if (e.key === 'Enter' || e.type === 'click') {
-      debouncedSearch.flush();
-    }
+  const handleSearchSubmit = () => debouncedSearch.flush();
+
+  // ⭐️ HÀM XÓA LỌC (ĐÃ SỬA)
+  const handleClearSearch = () => {
+    debouncedSearch.cancel(); // 🛑 QUAN TRỌNG: Hủy ngay lệnh tìm kiếm đang chờ
+    setInputValue("");        // Xóa ô nhập
+    setSearchKeyword("");     // Xóa từ khóa trong state
+    fetchBooks("");           // Gọi API lấy lại toàn bộ sách
   };
 
   const handleViewDetail = (book) => {
-    navigate(`/books/${book.MaSach}`, { 
-        state: { 
-            bookDetail: book 
-        } 
-    });
+    navigate(`/books/${book.MaSach}`, { state: { bookDetail: book } });
   };
 
-  // ========================================================================
-  // 🛒 XỬ LÝ MUA SÁCH (PURCHASE)
-  // ========================================================================
-  const handleAddToCartPurchase = async (book) => {
-    // Mua sách thì vẫn dựa vào SoLuongTon (hoặc logic riêng của bạn)
-    if (!book.GiaBan || book.SoLuongTon < 1) return;
-    
-    setAddingToCart(prev => ({ ...prev, [`purchase-${book.MaSach}`]: true }));
-    
-    try {
-      const payload = {
-        MaSach: book.MaSach,
-        SoLuong: 1
-      };
-
-      const res = await addToPurchaseCart(payload);
-      const responseData = res.data || res;
-
-      if (responseData.code === 200) {
-        alert(`✅ ${responseData.message || `Đã thêm "${book.TenSach}" vào Giỏ MUA!`}`);
-      } else {
-        alert(`⚠️ Thông báo: ${responseData.message}`);
-      }
-
-    } catch (error) {
-      console.error("❌ Lỗi thêm vào giỏ mua:", error);
-      const msg = error.response?.data?.message || error.message || "Lỗi kết nối Server";
-      alert(`❌ Không thể thêm vào giỏ mua:\n${msg}`);
-    } finally {
-      setAddingToCart(prev => ({ ...prev, [`purchase-${book.MaSach}`]: false }));
-    }
-  };
-
-  // ========================================================================
-  // 📚 XỬ LÝ MƯỢN SÁCH (LOAN) - ✅ ĐÃ SỬA LOGIC
-  // ========================================================================
+  // --- CART HANDLERS ---
   const handleAddToCartBorrow = async (book) => {
-    // 🔥 SỬA: Kiểm tra SoLuongCoSan (Sẵn sàng) thay vì SoLuongTon
-    if (book.SoLuongCoSan < 1) {
-        alert("Sách này hiện đã được mượn hết, vui lòng chờ bản sao được trả lại.");
-        return;
-    }
-    
+    if (book.SoLuongCoSan < 1) return alert("Sách này tạm hết bản sao để mượn.");
     setAddingToCart(prev => ({ ...prev, [`borrow-${book.MaSach}`]: true }));
-    
     try {
-      const payload = {
-        MaSach: book.MaSach,
-        SoLuong: 1
-      };
-
-      const res = await addToLoanCart(payload);
-      const responseData = res.data || res;
-
-      if (responseData.code === 200) {
-        alert(`✅ ${responseData.message || `Đã thêm "${book.TenSach}" vào Giỏ MƯỢN!`}`);
-      } else {
-        alert(`⚠️ Không thể mượn:\n${responseData.message}`);
-      }
-
-    } catch (error) {
-      console.error("❌ Lỗi thêm vào giỏ mượn:", error);
-      const msg = error.response?.data?.message || error.message || "Lỗi kết nối Server";
-      const detail = error.response?.data?.detail || "";
-      alert(`❌ Lỗi Mượn Sách:\n${msg}\n${detail}`);
-    } finally {
-      setAddingToCart(prev => ({ ...prev, [`borrow-${book.MaSach}`]: false }));
-    }
+        const res = await addToLoanCart({ MaSach: book.MaSach, SoLuong: 1 });
+        const data = res.data || res;
+        alert(data.code === 200 ? `✅ Đã thêm "${book.TenSach}" vào giỏ mượn!` : data.message);
+    } catch (e) { alert("Lỗi thêm giỏ mượn: " + (e.response?.data?.message || e.message)); }
+    finally { setAddingToCart(prev => ({ ...prev, [`borrow-${book.MaSach}`]: false })); }
   };
 
-  const formatCurrency = (amount) =>
-    new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount || 0);
+  const handleAddToCartPurchase = async (book) => {
+    if (!book.GiaBan || book.SoLuongTon < 1) return;
+    setAddingToCart(prev => ({ ...prev, [`purchase-${book.MaSach}`]: true }));
+    try {
+        const res = await addToPurchaseCart({ MaSach: book.MaSach, SoLuong: 1 });
+        const data = res.data || res;
+        alert(data.code === 200 ? `✅ Đã thêm "${book.TenSach}" vào giỏ mua!` : data.message);
+    } catch (e) { alert("Lỗi thêm giỏ mua: " + (e.response?.data?.message || e.message)); }
+    finally { setAddingToCart(prev => ({ ...prev, [`purchase-${book.MaSach}`]: false })); }
+  };
 
+  const formatCurrency = (val) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
   const isAddingToCart = (type, maSach) => addingToCart[`${type}-${maSach}`];
 
-  // --- RENDER ---
-  if (loading) {
-    return (
-      <Layout>
-        <div className="books-loading">
-          <div className="books-spinner"></div>
-          <p>Đang tải danh sách sách...</p>
-        </div>
-      </Layout>
-    );
-  }
+  // --- PHÂN TRANG ---
+  const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
+  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
+  const currentBooks = books.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(books.length / ITEMS_PER_PAGE);
 
-  const displayBooks = books.length > 0;
+  const paginate = (pageNumber) => {
+    setCurrentPage(pageNumber);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const isSearching = searchKeyword.length > 0;
+  const displayBooks = books.length > 0;
 
+  // --- RENDER ---
   return (
     <Layout>
       <div className="books-container">
         <h2 className="books-title">
-          {isSearching ? `🔍 Kết quả tìm kiếm cho "${searchKeyword}"` : "📚 Danh sách sách"}
-          {displayBooks && <span className="books-count"> ({books.length} cuốn)</span>}
+          {isSearching ? `🔍 Kết quả: "${searchKeyword}"` : "📚 Danh sách sách"}
+          {displayBooks && !loading && <span className="books-count"> ({books.length})</span>}
         </h2>
 
-        {/* ... (Phần Search Input giữ nguyên) ... */}
+        {/* INPUT TÌM KIẾM */}
         <div className="books-search-container">
           <div className="search-input-wrapper">
             <input
               type="text"
-              placeholder="🔍 Tìm kiếm sách, tác giả, danh mục..."
+              placeholder="🔍 Nhập tên sách, tác giả..."
               value={inputValue}
               onChange={handleSearchChange}
-              onKeyPress={handleSearchSubmit}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
               className="books-search-input"
+              autoFocus
             />
-            <button onClick={handleSearchSubmit} className="search-button">Tìm kiếm</button>
+            <button onClick={handleSearchSubmit} className="search-button">
+              {loading ? "..." : "Tìm"}
+            </button>
           </div>
+          {/* Nút Xóa Lọc */}
           {isSearching && (
-            <button 
-              onClick={() => {
-                setInputValue("");
-                setSearchKeyword("");
-                fetchBooks("");
-              }}
-              className="clear-search-button"
-            >
-              ✕ Hiển thị tất cả
+            <button className="clear-search-button" onClick={handleClearSearch}>
+              ✕ Xóa lọc
             </button>
           )}
         </div>
 
-        {/* ... (Phần Link Action Links giữ nguyên) ... */}
         <div className="books-action-links">
-          <Link to="/borrow-cart" className="books-link books-link-borrow">🛒 Xem Giỏ MƯỢN</Link>
-          <Link to="/checkout" className="books-link books-link-purchase">💰 Xem Giỏ MUA</Link>
+          <Link to="/borrow-cart" className="books-link books-link-borrow">🛒 Giỏ Mượn</Link>
+          <Link to="/checkout" className="books-link books-link-purchase">💰 Giỏ Mua</Link>
         </div>
 
-        {/* --- DANH SÁCH SÁCH --- */}
-        {!displayBooks && !loading && !apiError && (
+        {/* LOADING & ERROR */}
+        {loading && (
+            <div className="books-loading" style={{padding: '40px', textAlign: 'center'}}>
+                <div className="books-spinner"></div>
+                <p style={{color: '#64748b', marginTop: '10px'}}>Đang tải dữ liệu...</p>
+            </div>
+        )}
+
+        {!loading && !apiError && !displayBooks && (
           <div className="books-no-results">
              <div className="no-results-icon">📭</div>
-             <p>{isSearching ? `Không tìm thấy sách phù hợp với "${searchKeyword}"` : "Hiện chưa có sách nào trong hệ thống"}</p>
+             <p>{isSearching ? "Không tìm thấy sách nào." : "Chưa có sách trong hệ thống."}</p>
           </div>
         )}
 
-        {displayBooks && (
-          <div className="books-grid">
-            {books.map((book) => (
-              <div key={book.MaSach} className="books-card">
-                <div className="books-card-image-container">
-                  <img 
-                    src={book.AnhMinhHoa} 
-                    alt={book.TenSach} 
-                    className="books-card-image" 
-                    onError={(e) => { e.target.src = "https://via.placeholder.com/150x200.png?text=No+Image"; }}
-                    onClick={() => handleViewDetail(book)}
-                  />
-                </div>
-                
-                <div className="books-card-content">
-                  <h4 className="books-card-title" onClick={() => handleViewDetail(book)}>
-                    {book.TenSach}
-                  </h4>
+        {/* GRID SÁCH */}
+        {!loading && displayBooks && (
+          <>
+            <div className="books-grid">
+              {currentBooks.map((book) => (
+                <div key={book.MaSach} className="books-card">
+                  <div className="books-card-image-container">
+                    <img 
+                      src={book.AnhMinhHoa} alt={book.TenSach} className="books-card-image" 
+                      onError={(e) => e.target.src = "https://via.placeholder.com/150?text=No+Img"}
+                      onClick={() => handleViewDetail(book)}
+                    />
+                  </div>
                   
-                  <div className="books-card-info">
-                    <p className="books-card-text"><span className="info-icon">✍️</span> {book.TenTG || book.MaTG}</p>
-                    <p className="books-card-text"><span className="info-icon">📂</span> {book.TenDM || book.MaDM}</p>
-                    <p className="books-card-text"><span className="info-icon">🗓</span> {book.NamXuatBan}</p>
-                    {book.GiaBan && (
-                      <p className="books-card-price"><span className="info-icon">💰</span> {formatCurrency(book.GiaBan)}</p>
-                    )}
-                  </div>
-
-                  {/* 🔥 SỬA PHẦN HIỂN THỊ TỒN KHO: Hiển thị cả Sẵn có / Tổng */}
-                  <div className="books-card-status-section">
-                    <span className={`books-card-status ${
-                      book.SoLuongCoSan > 0 ? "status-available" : "status-unavailable"
-                    }`}>
-                      {book.SoLuongCoSan > 0 ? "✅ Có thể mượn" : "❌ Tạm hết bản sao"}
-                    </span>
-                    <span className="books-card-stock" style={{fontSize: '0.85rem'}}>
-                      Sẵn có: <b>{book.SoLuongCoSan}</b> / {book.SoLuongTon}
-                    </span>
-                  </div>
-
-                  <div className="books-card-actions">
-                    <button 
-                      onClick={() => handleViewDetail(book)} 
-                      className="books-action-btn books-btn-detail"
-                    >
-                      Xem chi tiết
-                    </button>
+                  <div className="books-card-content">
+                    <h4 className="books-card-title" onClick={() => handleViewDetail(book)}>{book.TenSach}</h4>
                     
-                    {/* 🔥 SỬA ĐIỀU KIỆN NÚT MƯỢN: Dựa vào SoLuongCoSan */}
-                    {book.TinhTrang === "Còn" && (
-                      <div className="books-cart-buttons">
-                        <button 
-                          onClick={() => handleAddToCartBorrow(book)}
-                          // Disable nút nếu không có sách sẵn sàng (SoLuongCoSan === 0)
-                          disabled={isAddingToCart('borrow', book.MaSach) || book.SoLuongCoSan < 1}
-                          className={`books-action-btn books-btn-borrow ${
-                            isAddingToCart('borrow', book.MaSach) ? "btn-loading" : ""
-                          } ${book.SoLuongCoSan < 1 ? "btn-disabled" : ""}`}
-                          title={book.SoLuongCoSan < 1 ? "Đã hết sách để mượn" : "Thêm vào giỏ mượn"}
-                        >
-                          {isAddingToCart('borrow', book.MaSach) ? "⏳" : "📚"} 
-                          {isAddingToCart('borrow', book.MaSach) ? " Đang thêm..." : " Mượn"}
-                        </button>
-                        
-                        {book.GiaBan && (
+                    <div className="books-card-info">
+                      <p className="books-card-text"><span>✍️</span> {book.TenTG}</p>
+                      <p className="books-card-text"><span>📂</span> {book.TenDM}</p>
+                      {book.GiaBan && <p className="books-card-price"><span>💰</span> {formatCurrency(book.GiaBan)}</p>}
+                    </div>
+
+                    <div className="books-card-status-section">
+                      <span className={`books-card-status ${book.SoLuongCoSan > 0 ? "status-available" : "status-unavailable"}`}>
+                        {book.SoLuongCoSan > 0 ? "✅ Có sẵn" : "❌ Tạm hết"}
+                      </span>
+                      <span className="books-card-stock">Kho: <b>{book.SoLuongCoSan}</b>/{book.SoLuongTon}</span>
+                    </div>
+
+                    <div className="books-card-actions">
+                      <button onClick={() => handleViewDetail(book)} className="books-action-btn books-btn-detail">Chi tiết</button>
+                      {book.TinhTrang === "Còn" && (
+                        <div className="books-cart-buttons">
                           <button 
-                            onClick={() => handleAddToCartPurchase(book)} 
-                            disabled={isAddingToCart('purchase', book.MaSach)}
-                            className={`books-action-btn books-btn-purchase ${
-                              isAddingToCart('purchase', book.MaSach) ? "btn-loading" : ""
-                            }`}
+                            onClick={() => handleAddToCartBorrow(book)}
+                            disabled={isAddingToCart('borrow', book.MaSach) || book.SoLuongCoSan < 1}
+                            className={`books-action-btn books-btn-borrow ${book.SoLuongCoSan < 1 ? "btn-disabled" : ""}`}
                           >
-                            {isAddingToCart('purchase', book.MaSach) ? "⏳" : "🛒"}
-                            {isAddingToCart('purchase', book.MaSach) ? " Đang thêm..." : " Mua"}
+                            {isAddingToCart('borrow', book.MaSach) ? "..." : "Mượn"}
                           </button>
-                        )}
-                      </div>
-                    )}
+                          {book.GiaBan && (
+                            <button 
+                              onClick={() => handleAddToCartPurchase(book)} 
+                              disabled={isAddingToCart('purchase', book.MaSach)}
+                              className="books-action-btn books-btn-purchase"
+                            >
+                              {isAddingToCart('purchase', book.MaSach) ? "..." : "Mua"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+
+            {/* THANH PHÂN TRANG */}
+            {totalPages > 1 && (
+              <div className="pagination-container" style={{display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '30px'}}>
+                <button 
+                  disabled={currentPage === 1} 
+                  onClick={() => paginate(currentPage - 1)}
+                  className="page-btn"
+                  style={{padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', background: currentPage===1?'#f1f1f1':'#fff'}}
+                >
+                  &laquo; Trước
+                </button>
+                <span style={{lineHeight: '35px', fontWeight: 'bold'}}>Trang {currentPage} / {totalPages}</span>
+                <button 
+                  disabled={currentPage === totalPages} 
+                  onClick={() => paginate(currentPage + 1)}
+                  className="page-btn"
+                  style={{padding: '8px 16px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', background: currentPage===totalPages?'#f1f1f1':'#fff'}}
+                >
+                  Sau &raquo;
+                </button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     </Layout>

@@ -3,6 +3,7 @@
   --navbar-height: 70px;
   --navbar-bg: #e8ecf7;
   --text-dark: #444e35;
+  border: 2px solid #b4cdee;
 }
 
 .navbar-container {
