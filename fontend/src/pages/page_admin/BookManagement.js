@@ -124,20 +124,34 @@ export default function BookManagement() {
             }
         }
     };
-    const handleOpenModal = (book = null) => {
-        if (book) {
-            setIsEditing(true);
-            setFormData({ ...book }); // Copy properties matching form keys
-            setPreviewUrl(book.AnhMinhHoa); 
-            setSelectedFile(null); 
-        } else {
-            setIsEditing(false);
-            setFormData(initialForm);
-            setPreviewUrl("");
-            setSelectedFile(null);
-        }
-        setShowModal(true);
-    };
+   const handleOpenModal = (book = null) => {
+    if (book) {
+        // CHẾ ĐỘ SỬA: Map dữ liệu từ 'book' vào 'formData'
+        setIsEditing(true);
+        setFormData({
+            maSach: book.MaSach,      // Map đúng key từ API (thường là PascalCase) sang state (camelCase)
+            tenSach: book.TenSach,
+            maTG: book.MaTG,
+            maDM: book.MaDM,
+            giaBan: book.GiaBan,
+            soLuongTon: book.SoLuongTon,
+            namXuatBan: book.NamXuatBan,
+            moTa: book.MoTa || "",
+            donViTinh: book.DonViTinh || "Cuốn",
+            tinhTrang: book.TinhTrang || "Còn",
+            anhMinhHoa: book.AnhMinhHoa // Lưu URL ảnh cũ để gửi lên nếu không chọn ảnh mới
+        });
+        setPreviewUrl(book.AnhMinhHoa); // Hiển thị ảnh hiện tại
+        setSelectedFile(null);          // Reset file mới chọn
+    } else {
+        // CHẾ ĐỘ THÊM MỚI: Reset về form rỗng
+        setIsEditing(false);
+        setFormData(initialForm);
+        setPreviewUrl("");
+        setSelectedFile(null);
+    }
+    setShowModal(true);
+};
     const handleSubmit = async (e) => {
         e.preventDefault();
         const dataPayload = new FormData();

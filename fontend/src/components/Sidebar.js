@@ -134,7 +134,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-header-container">
-        <h2 className="sidebar-header">📚 Thu Vien</h2>
+        <h2 className="sidebar-header"> Thư Viện Nhóm 10</h2>
         {isLoggedIn && <p className="sidebar-welcome">Xin chào, {userName}</p>}
       </div>
 
