@@ -246,16 +246,53 @@ exports.getMyTransactions = async (req, res) => {
 };
 
 exports.updateTransactionStatus = async (req, res) => {
-    const { maTT, trangThai } = req.body;
+    const { maTT, trangThai } = req.body; // trangThai thường là 'HoanThanh'
+
+    let transaction;
     try {
         const pool = await sql.connect(config);
-        await pool.request()
-            .input('MaTT', sql.VarChar, maTT)
-            .input('TrangThai', sql.NVarChar, trangThai)
-            .query("UPDATE ThanhToan SET TrangThai = @TrangThai WHERE MaTT = @MaTT");
-        res.json({ message: "Thành công" });
-    } catch (err) {
-        res.status(500).json({ message: "Lỗi cập nhật" });
+        transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        const request = new sql.Request(transaction);
+
+        // 1. Cập nhật bảng ThanhToan
+        request.input('MaTT', sql.VarChar, maTT);
+        request.input('TrangThai', sql.NVarChar, trangThai);
+        
+        await request.query(`
+            UPDATE ThanhToan 
+            SET TrangThai = @TrangThai 
+            WHERE MaTT = @MaTT
+        `);
+
+        // 2. 🔥 LOGIC TỰ ĐỘNG ĐỒNG BỘ ĐƠN HÀNG 🔥
+        if (trangThai === 'HoanThanh') {
+            // Tìm Mã Đơn Hàng (MaDH) gắn với giao dịch này
+            // (Dùng request của transaction để đảm bảo nhất quán)
+            const transResult = await request.query(`SELECT MaDH FROM ThanhToan WHERE MaTT = @MaTT`);
+            
+            if (transResult.recordset.length > 0) {
+                const maDH = transResult.recordset[0].MaDH;
+
+                // Nếu có MaDH (tức là thanh toán cho đơn hàng), cập nhật đơn hàng luôn
+                if (maDH) {
+                    await request.query(`
+                        UPDATE DonHang 
+                        SET TrangThaiThanhToan = N'DaThanhToan' 
+                        WHERE MaDH = '${maDH}'
+                    `);
+                    console.log(`✅ Đã đồng bộ trạng thái 'DaThanhToan' cho đơn hàng: ${maDH}`);
+                }
+            }
+        }
+
+        await transaction.commit();
+        res.status(200).json({ message: "Cập nhật thành công & Đã đồng bộ đơn hàng!" });
+
+    } catch (error) {
+        if (transaction) await transaction.rollback();
+        console.error("Lỗi cập nhật giao dịch:", error);
+        res.status(500).json({ message: "Lỗi server khi cập nhật trạng thái." });
     }
 };
 // ============================================================

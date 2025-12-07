@@ -111,9 +111,9 @@ export default function AdminPurchaseOrders() {
                                     <th>Khách Hàng</th>
                                     <th>Ngày Đặt</th>
                                     <th>Tổng Tiền</th>
-                                    <th>Thanh Toán</th> {/* Cột mới */}
+                                    <th>Thanh Toán</th>
                                     <th>Trạng Thái</th>
-                                    <th>Thao tác</th>
+                                    <th style={{textAlign: 'center'}}>Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -163,7 +163,14 @@ export default function AdminPurchaseOrders() {
                                 </div>
 
                                 <table className="detail-table">
-                                    <thead><tr><th>Sách</th><th>Giá</th><th>SL</th><th>Thành tiền</th></tr></thead>
+                                    <thead>
+                                        <tr>
+                                            <th>Sách</th>
+                                            <th>Giá</th>
+                                            <th>SL</th>
+                                            <th>Thành tiền</th>
+                                        </tr>
+                                    </thead>
                                     <tbody>
                                         {orderItems.map((item, idx) => (
                                             <tr key={idx}>

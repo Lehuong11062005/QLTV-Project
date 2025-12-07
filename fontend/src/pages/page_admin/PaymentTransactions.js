@@ -21,7 +21,9 @@ export default function PaymentTransactions() {
         setIsLoading(true);
         try {
             const response = await getTransactionList();
-            setTransactions(response.data || []);
+            // Đảm bảo data là mảng, sắp xếp mới nhất lên đầu
+            const list = response.data || [];
+            setTransactions(list.sort((a, b) => new Date(b.NgayThanhToan || b.NgayTao) - new Date(a.NgayThanhToan || a.NgayTao)));
         } catch (error) {
             console.error("Lỗi tải giao dịch:", error);
         } finally {
@@ -34,8 +36,8 @@ export default function PaymentTransactions() {
         const completed = transactions.filter(t => t.TrangThai === 'HoanThanh');
         return {
             totalReal: completed.reduce((sum, t) => sum + (t.SoTien || 0), 0),
-            viaBank: completed.filter(t => t.PhuongThuc === 'NganHang').reduce((sum, t) => sum + (t.SoTien || 0), 0),
-            viaCash: completed.filter(t => t.PhuongThuc === 'TienMat').reduce((sum, t) => sum + (t.SoTien || 0), 0),
+            viaBank: completed.filter(t => t.PhuongThuc === 'NganHang' || t.PhuongThuc === 'Bank').reduce((sum, t) => sum + (t.SoTien || 0), 0),
+            viaCash: completed.filter(t => t.PhuongThuc === 'TienMat' || t.PhuongThuc === 'COD').reduce((sum, t) => sum + (t.SoTien || 0), 0),
             viaMoMo: completed.filter(t => t.PhuongThuc === 'MoMo').reduce((sum, t) => sum + (t.SoTien || 0), 0),
         };
     }, [transactions]);
@@ -43,18 +45,34 @@ export default function PaymentTransactions() {
     // --- LOGIC LỌC HIỂN THỊ ---
     const filteredTransactions = transactions.filter(t => {
         if (filterType !== 'all' && t.LoaiGiaoDich !== filterType) return false;
-        if (filterMethod !== 'all' && t.PhuongThuc !== filterMethod) return false;
+        
+        if (filterMethod !== 'all') {
+            // Chuẩn hóa so sánh chuỗi (vì DB có thể lưu Bank, NganHang, momo, MoMo...)
+            const method = (t.PhuongThuc || '').toLowerCase();
+            const filter = filterMethod.toLowerCase();
+            
+            if (filter === 'nganhang' && !method.includes('bank') && !method.includes('ngan')) return false;
+            if (filter === 'momo' && !method.includes('momo')) return false;
+            if (filter === 'tienmat' && !method.includes('tien') && !method.includes('cod')) return false;
+        }
+
         if (filterStatus !== 'all' && t.TrangThai !== filterStatus) return false;
         return true;
     });
 
-    // Hàm xử lý Duyệt tay (Cho Ngân hàng)
-    const handleApproveBankTransfer = async (maTT, amount) => {
-        const confirmMsg = `💰 XÁC NHẬN ĐÃ NHẬN TIỀN?\n\nBạn đã kiểm tra App Ngân hàng và thấy giao dịch ${amount.toLocaleString()}đ chưa?`;
+    // 🔥 HÀM DUYỆT THANH TOÁN THỦ CÔNG (QUAN TRỌNG)
+    const handleApprovePayment = async (maTT, amount, method) => {
+        const confirmMsg = `💰 XÁC NHẬN ĐÃ NHẬN TIỀN (${method})?\n\n` + 
+                           `Số tiền: ${amount.toLocaleString()} đ\n` +
+                           `Bạn xác nhận tiền đã về tài khoản chưa?`;
+        
         if(window.confirm(confirmMsg)) {
             try {
+                // Gọi API cập nhật trạng thái -> HoanThanh
+                // Backend sẽ tự động cập nhật DonHang -> DaThanhToan
                 await updateTransactionStatus(maTT, 'HoanThanh');
-                alert("✅ Đã cập nhật trạng thái thành công!");
+                
+                alert("✅ Đã cập nhật thành công! Đơn hàng liên quan đã được đánh dấu 'Đã thanh toán'.");
                 fetchTransactions(); // Load lại data
             } catch(err) {
                 alert("❌ Lỗi: " + (err.response?.data?.message || err.message));
@@ -65,36 +83,37 @@ export default function PaymentTransactions() {
     const formatCurrency = (val) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
     const formatDate = (d) => d ? new Date(d).toLocaleString('vi-VN') : '---';
 
-    // Helper: Style cho Phương thức
     const getMethodBadge = (method) => {
-        switch(method) {
-            case 'MoMo': return <span className="badge-method momo">🟣 MoMo</span>;
-            case 'NganHang': return <span className="badge-method bank">🏦 Chuyển khoản</span>;
-            case 'TienMat': return <span className="badge-method cash">💵 Tiền mặt</span>;
-            default: return <span className="badge-method default">{method}</span>;
-        }
+        const m = (method || '').toLowerCase();
+        if (m.includes('momo')) return <span className="badge-method momo">🟣 MoMo</span>;
+        if (m.includes('bank') || m.includes('ngan')) return <span className="badge-method bank">🏦 Chuyển khoản</span>;
+        if (m.includes('tien') || m.includes('cod')) return <span className="badge-method cash">💵 Tiền mặt</span>;
+        return <span className="badge-method default">{method}</span>;
     };
 
-    if (isLoading) return <Layout><div className="loading-state">⏳ Đang tải dữ liệu...</div></Layout>;
+    if (isLoading) return <Layout><div className="loading-state">⏳ Đang tải dữ liệu dòng tiền...</div></Layout>;
 
     return (
         <Layout>
             <div className="transaction-page">
-                <h2 className="page-title">💸 Quản lý Dòng tiền (Cashflow)</h2>
+                <div className="page-header-flex">
+                    <h2 className="page-title">💸 Quản lý Dòng tiền (Cashflow)</h2>
+                    <div className="last-updated">Cập nhật lúc: {new Date().toLocaleTimeString()}</div>
+                </div>
 
                 {/* --- CARD THỐNG KÊ --- */}
                 <div className="summary-cards">
                     <div className="summary-card total-revenue">
                         <div className="card-label">TỔNG THỰC THU</div>
                         <div className="card-value">{formatCurrency(stats.totalReal)}</div>
-                        <div className="card-sub">Tiền đã về túi</div>
+                        <div className="card-sub">Tiền đã về túi (Hoàn thành)</div>
                     </div>
                     <div className="summary-card">
                         <div className="card-label">🏦 Ngân hàng</div>
                         <div className="card-value sm">{formatCurrency(stats.viaBank)}</div>
                     </div>
                     <div className="summary-card">
-                        <div className="card-label">💵 Tiền mặt (Phạt)</div>
+                        <div className="card-label">💵 Tiền mặt / COD</div>
                         <div className="card-value sm">{formatCurrency(stats.viaCash)}</div>
                     </div>
                     <div className="summary-card">
@@ -108,18 +127,18 @@ export default function PaymentTransactions() {
                     <div className="filter-group">
                         <select className="filter-select" value={filterMethod} onChange={e => setFilterMethod(e.target.value)}>
                             <option value="all">-- Tất cả nguồn tiền --</option>
-                            <option value="NganHang">🏦 Chuyển khoản (Cần duyệt)</option>
-                            <option value="TienMat">💵 Tiền mặt</option>
-                            <option value="MoMo">🟣 MoMo (Tự động)</option>
+                            <option value="NganHang">🏦 Chuyển khoản</option>
+                            <option value="TienMat">💵 Tiền mặt / COD</option>
+                            <option value="MoMo">🟣 MoMo</option>
                         </select>
 
                         <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                             <option value="all">-- Tất cả trạng thái --</option>
-                            <option value="ChoThanhToan">⏳ Chờ thanh toán (Pending)</option>
+                            <option value="ChoThanhToan">⏳ Chờ duyệt (Cần xử lý)</option>
                             <option value="HoanThanh">✅ Đã hoàn thành</option>
                         </select>
                     </div>
-                    <button className="btn-refresh" onClick={fetchTransactions}>🔄 Làm mới</button>
+                    <button className="btn-refresh" onClick={fetchTransactions}>🔄 Làm mới bảng</button>
                 </div>
 
                 {/* --- BẢNG --- */}
@@ -128,54 +147,53 @@ export default function PaymentTransactions() {
                         <thead>
                             <tr>
                                 <th>Mã GD</th>
-                                <th>Khách hàng</th>
-                                <th>Nội dung / Loại</th>
+                                <th>Nội dung / Tham chiếu</th>
                                 <th>Số tiền</th>
                                 <th>Nguồn tiền</th>
                                 <th>Trạng thái</th>
-                                <th>Thời gian</th>
-                                <th style={{textAlign: 'center'}}>Hành động</th>
+                                <th>Ngày tạo / TT</th>
+                                <th style={{textAlign: 'center', width: '150px'}}>Hành động</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredTransactions.length === 0 ? (
-                                <tr><td colSpan="8" className="text-center">Không có giao dịch nào phù hợp.</td></tr>
+                                <tr><td colSpan="7" className="text-center empty-row">Không có giao dịch nào phù hợp.</td></tr>
                             ) : filteredTransactions.map((t) => (
                                 <tr key={t.MaTT} className={t.TrangThai === 'ChoThanhToan' ? 'row-pending' : ''}>
                                     <td>
-                                        <div className="trans-id">{t.MaTT}</div>
-                                        <div className="ref-id">{t.MaThamChieu || t.MaDH}</div>
+                                        <div className="trans-id" title={t.MaTT}>{t.MaTT}</div>
                                     </td>
                                     <td>
-                                        <div style={{fontWeight: '600'}}>{t.NguoiThanhToan}</div>
-                                    </td>
-                                    <td>
-                                        <div>{t.LoaiGiaoDich === 'PhiPhat' ? '⚖️ Nộp phạt' : '🛒 Mua sách'}</div>
-                                        <small style={{color: '#666'}}>{t.NoiDung || 'Không có ghi chú'}</small>
+                                        <div className="ref-content">
+                                            {t.LoaiGiaoDich === 'PhiPhat' ? '⚖️ Nộp phạt' : '🛒 Mua sách'} 
+                                            <span className="ref-code">Ref: {t.MaThamChieu || t.MaDH}</span>
+                                        </div>
+                                        <div className="user-note">{t.NoiDung}</div>
                                     </td>
                                     <td className="money-cell">{formatCurrency(t.SoTien)}</td>
                                     <td>{getMethodBadge(t.PhuongThuc)}</td>
                                     <td>
                                         <span className={`badge-status ${t.TrangThai}`}>
-                                            {t.TrangThai === 'HoanThanh' ? 'Đã thu tiền' : 'Chưa thanh toán'}
+                                            {t.TrangThai === 'HoanThanh' ? 'Đã thu tiền' : 'Chờ duyệt'}
                                         </span>
                                     </td>
-                                    <td style={{fontSize:'0.85rem'}}>{formatDate(t.NgayThanhToan)}</td>
+                                    <td style={{fontSize:'0.85rem'}}>
+                                        <div>{formatDate(t.NgayThanhToan || t.NgayTao)}</div>
+                                    </td>
                                     
                                     <td style={{textAlign: 'center'}}>
-                                        {/* Nút DUYỆT chỉ hiện khi: Chờ thanh toán VÀ là Chuyển khoản */}
-                                        {t.TrangThai === 'ChoThanhToan' && t.PhuongThuc === 'NganHang' && (
+                                        {/* 🔥 LOGIC NÚT DUYỆT: Hiện cho cả Bank và MoMo nếu đang chờ */}
+                                        {t.TrangThai === 'ChoThanhToan' ? (
                                             <button 
                                                 className="btn-approve" 
-                                                onClick={() => handleApproveBankTransfer(t.MaTT, t.SoTien)}
-                                                title="Bấm vào đây sau khi đã nhận được tiền trong tài khoản"
+                                                onClick={() => handleApprovePayment(t.MaTT, t.SoTien, t.PhuongThuc)}
+                                                title="Xác nhận đã nhận được tiền"
                                             >
-                                                ✅ Xác nhận
+                                                ✅ Duyệt
                                             </button>
+                                        ) : (
+                                            <span className="check-icon">✔</span>
                                         )}
-
-                                        {/* Tiền mặt/MoMo thì thường tự động xong rồi, chỉ hiện dấu tick */}
-                                        {t.TrangThai === 'HoanThanh' && <span style={{color:'#16a34a'}}>✔</span>}
                                     </td>
                                 </tr>
                             ))}
