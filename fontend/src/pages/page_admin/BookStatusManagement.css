@@ -374,3 +374,14 @@
     font-weight: 600;
     color: #475569;
 }
+.status-select.DaBan {
+    background-color: #f1f5f9;
+    color: #64748b;
+    border-color: #cbd5e1;
+    font-style: italic;
+}
+
+.row-sold {
+    background-color: #f8fafc; /* Nền xám nhạt cho cả dòng */
+    opacity: 0.8;
+}

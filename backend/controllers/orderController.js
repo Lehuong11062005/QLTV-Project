@@ -11,50 +11,57 @@ const getRequest = (context) => context.request();
 
 /** Tạo đơn hàng từ giỏ mua (Checkout) */
 exports.createOrder = async (req, res) => {
-    // 1. Lấy dữ liệu cần thiết
+    // 1. Lấy dữ liệu
     const MaDG = req.user.MaDG || req.user.UserId;
     const { diaChiGiaoHang, phuongThucThanhToan, phiVanChuyen } = req.body;
     
     let transaction; 
 
     try {
-        // --- 1. THIẾT LẬP KẾT NỐI VÀ LẤY DỮ LIỆU GIỎ HÀNG ---
         const pool = await sql.connect(config); 
         
-        // ... (Giữ nguyên đoạn lấy giỏ hàng của bạn) ...
+        // --- BƯỚC 1: LẤY GIỎ HÀNG ---
         const requestToGetCart = getRequest(pool); 
         await requestToGetCart.input('MaDG', sql.VarChar(10), MaDG);
         
-        const cartResult = await requestToGetCart.query(`
-            SELECT MaGH, TamTinh FROM GioHang WHERE MaDG = @MaDG
-        `);
-
-        if (cartResult.recordset.length === 0) {
-            return res.status(404).json({ message: 'Không tìm thấy giỏ hàng.' });
-        }
+        // Lấy MaGH
+        const cartResult = await requestToGetCart.query(`SELECT MaGH, TamTinh FROM GioHang WHERE MaDG = @MaDG`);
+        if (cartResult.recordset.length === 0) return res.status(404).json({ message: 'Không tìm thấy giỏ hàng.' });
+        
         const { MaGH, TamTinh } = cartResult.recordset[0];
 
+        // Lấy chi tiết sách
         const cartItemsResult = await requestToGetCart.query(`
-            SELECT gh.MaSach, gh.SoLuong, s.GiaBan 
+            SELECT gh.MaSach, gh.SoLuong, s.GiaBan, s.TenSach 
             FROM GioHang_Sach gh JOIN Sach s ON gh.MaSach = s.MaSach
             WHERE gh.MaGH = '${MaGH}'
         `);
         const items = cartItemsResult.recordset;
-        if (items.length === 0) {
-            return res.status(400).json({ message: 'Giỏ hàng rỗng.' });
+        if (items.length === 0) return res.status(400).json({ message: 'Giỏ hàng rỗng.' });
+
+        // --- BƯỚC 2: KIỂM TRA TỒN KHO THỰC TẾ TRƯỚC KHI TẠO ĐƠN ---
+        // (Tránh trường hợp 2 người cùng mua 1 cuốn cuối cùng)
+        for (const item of items) {
+            const checkStock = await pool.request()
+                .input('MaSach', sql.VarChar(10), item.MaSach)
+                .query(`SELECT COUNT(*) as CoSan FROM BanSao_ThuVien WHERE MaSach = @MaSach AND TrangThaiBanSao = N'SanSang'`);
+            
+            if (checkStock.recordset[0].CoSan < item.SoLuong) {
+                return res.status(400).json({ 
+                    message: `Sách "${item.TenSach}" không đủ số lượng bản sao sẵn sàng (Còn: ${checkStock.recordset[0].CoSan}).` 
+                });
+            }
         }
 
-        // --- 2. BẮT ĐẦU TRANSACTION VÀ TẠO ĐƠN HÀNG ---
+        // --- BƯỚC 3: BẮT ĐẦU TRANSACTION ---
         transaction = new sql.Transaction(pool);
         await transaction.begin();
 
-        // Sinh Mã Đơn Hàng
+        // 3.1 Sinh Mã Đơn & Insert DonHang
         const MaDH = await getUniqueId(transaction, 'DH', 'DonHang', 'MaDH');
-        
         const NgayTao = new Date();
         const TongTien = parseFloat(TamTinh) + parseFloat(phiVanChuyen || 0);
         
-        // Insert vào DonHang (Mặc định ChoDuyet, ChuaThanhToan)
         const insertOrderRequest = getRequest(transaction); 
         insertOrderRequest.input('MaDH', sql.VarChar(10), MaDH);
         insertOrderRequest.input('MaDG', sql.VarChar(10), MaDG);
@@ -71,50 +78,60 @@ exports.createOrder = async (req, res) => {
             VALUES (@MaDH, @MaDG, @NgayTao, @TongTien, @DiaChiGiaoHang, @TrangThai, @HinhThucThanhToan, @TrangThaiThanhToan, @PhiVanChuyen)
         `);
 
-        // --- 3. XỬ LÝ CHI TIẾT ĐƠN HÀNG VÀ TỒN KHO ---
+        // --- BƯỚC 4: XỬ LÝ CHI TIẾT & CẬP NHẬT BẢN SAO (QUAN TRỌNG NHẤT) ---
         for (const item of items) {
             const detailRequest = getRequest(transaction); 
-            // ... (Giữ nguyên đoạn insert chi tiết và trừ kho) ...
+            
             detailRequest.input('MaDH', sql.VarChar(10), MaDH);
             detailRequest.input('MaSach', sql.VarChar(10), item.MaSach);
             detailRequest.input('SoLuong', sql.Int, item.SoLuong);
             detailRequest.input('DonGia', sql.Decimal(18, 0), item.GiaBan);
 
-            await detailRequest.query(`INSERT INTO DonHang_Sach (MaDH, MaSach, SoLuong, DonGia) VALUES (@MaDH, @MaSach, @SoLuong, @DonGia)`);
-            await detailRequest.query(`UPDATE Sach SET SoLuongTon = SoLuongTon - @SoLuong WHERE MaSach = @MaSach`);
+            // A. Lưu chi tiết đơn hàng
+            await detailRequest.query(`
+                INSERT INTO DonHang_Sach (MaDH, MaSach, SoLuong, DonGia) 
+                VALUES (@MaDH, @MaSach, @SoLuong, @DonGia)
+            `);
+            
+            // B. Cập nhật bản sao: Chuyển 'SanSang' -> 'DaBan'
+            // Sử dụng CTE để chọn đúng X cuốn sách đầu tiên tìm thấy
+            await detailRequest.query(`
+                WITH SachCanBan AS (
+                    SELECT TOP (${item.SoLuong}) *
+                    FROM BanSao_ThuVien
+                    WHERE MaSach = @MaSach AND TrangThaiBanSao = N'SanSang'
+                    ORDER BY MaBanSao ASC
+                )
+                UPDATE SachCanBan
+                SET TrangThaiBanSao = N'DaBan' -- Đánh dấu bản sao này đã bán
+            `);
+
+            // C. Giảm Tổng Tồn Kho trong bảng Sach
+            await detailRequest.query(`
+                UPDATE Sach 
+                SET SoLuongTon = SoLuongTon - @SoLuong
+                WHERE MaSach = @MaSach
+            `);
         }
 
-        // =================================================================================
-        // 🔥 BƯỚC 3.5: TẠO GIAO DỊCH THANH TOÁN (CHỈ VỚI ĐƠN ONLINE: BANK/MOMO)
-        // =================================================================================
-        
+        // --- BƯỚC 5: TẠO GIAO DỊCH THANH TOÁN (NẾU ONLINE) ---
         const method = (phuongThucThanhToan || '').toLowerCase(); 
-
-        // Kiểm tra nếu là Bank hoặc MoMo
         if (method === 'bank' || method === 'momo' || method.includes('chuyenkhoan')) {
             const transactionRequest = getRequest(transaction);
-
-            // Sinh mã giao dịch
-            const MaTT = 'TT' + Date.now().toString().slice(-8); 
+            const MaTT = 'TT' + Date.now().toString().slice(-7); 
 
             transactionRequest.input('MaTT', sql.VarChar(10), MaTT);
             transactionRequest.input('MaDH_Trans', sql.VarChar(10), MaDH);
             transactionRequest.input('PhuongThuc', sql.NVarChar(50), phuongThucThanhToan);
             transactionRequest.input('SoTien', sql.Decimal(18, 0), TongTien);
             
-            // 🛠️ ĐÃ SỬA: Thay 'NgayTao' thành 'NgayThanhToan'
             await transactionRequest.query(`
                 INSERT INTO ThanhToan (MaTT, MaDH, PhuongThuc, SoTien, TrangThai, LoaiGiaoDich, NoiDung, NgayThanhToan)
                 VALUES (@MaTT, @MaDH_Trans, @PhuongThuc, @SoTien, N'ChoThanhToan', 'DonHang', N'Thanh toán đơn hàng Online', GETDATE())
             `);
-            
-            console.log(`✅ Đã tạo phiếu thanh toán chờ duyệt: ${MaTT} cho đơn ${MaDH}`);
         }
-        // NẾU LÀ COD: Thì bỏ qua, không Insert vào bảng ThanhToan
 
-        // =================================================================================
-
-        // --- 4. XÓA GIỎ HÀNG VÀ COMMIT ---
+        // --- BƯỚC 6: DỌN DẸP GIỎ HÀNG & COMMIT ---
         const deleteCartRequest = getRequest(transaction); 
         await deleteCartRequest.query(`DELETE FROM GioHang_Sach WHERE MaGH = '${MaGH}'`);
         await deleteCartRequest.query(`UPDATE GioHang SET TamTinh = 0 WHERE MaGH = '${MaGH}'`);
@@ -126,17 +143,13 @@ exports.createOrder = async (req, res) => {
             message: 'Đơn hàng được tạo thành công!', 
             MaDH, 
             TongTien,
-            PhuongThucThanhToan: phuongThucThanhToan
+            phuongThucThanhToan
         });
 
     } catch (error) {
-        // --- 5. ROLLBACK NẾU CÓ LỖI ---
         if (transaction) {
-            try {
-                if (transaction._aborted === false) await transaction.rollback();
-            } catch (rollbackError) {
-                console.error('Lỗi rollback:', rollbackError);
-            }
+            try { if (transaction._aborted === false) await transaction.rollback(); } 
+            catch (e) { console.error('Rollback error', e); }
         }
         console.error('Error creating order:', error);
         res.status(500).json({ message: 'Lỗi máy chủ.', error: error.message });

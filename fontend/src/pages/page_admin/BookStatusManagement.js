@@ -18,7 +18,7 @@ export default function BookStatusManagement() {
     const [searchTerm, setSearchTerm] = useState("");
     const [searchCopyTerm, setSearchCopyTerm] = useState("");
 
-    // ⭐️ MỚI: State Phân trang
+    // State Phân trang
     const [currentPageBook, setCurrentPageBook] = useState(1);
     const [currentPageCopy, setCurrentPageCopy] = useState(1);
 
@@ -56,7 +56,7 @@ export default function BookStatusManagement() {
     const handleSelectBook = async (book) => {
         setSelectedBook(book);
         setSearchCopyTerm(""); 
-        setCurrentPageCopy(1); // Reset trang bản sao về 1
+        setCurrentPageCopy(1); 
         setLoadingCopies(true);
         try {
             const res = await getCopiesByBook(book.MaSach);
@@ -90,6 +90,12 @@ export default function BookStatusManagement() {
     };
 
     const handleStatusChange = async (maBanSao, newStatus) => {
+        // Cảnh báo nhẹ nếu Admin định đổi trạng thái của sách đã bán
+        const currentCopy = copies.find(c => c.MaBanSao === maBanSao);
+        if (currentCopy && currentCopy.TrangThaiBanSao === 'DaBan' && newStatus !== 'DaBan') {
+            if (!window.confirm("⚠️ Cuốn này ĐÃ BÁN. Bạn có chắc muốn đổi trạng thái lại không?")) return;
+        }
+
         try {
             await updateCopyStatus(maBanSao, { trangThai: newStatus });
             setCopies(prev => prev.map(c => c.MaBanSao === maBanSao ? { ...c, TrangThaiBanSao: newStatus } : c));
@@ -105,11 +111,11 @@ export default function BookStatusManagement() {
             setCopies(prev => prev.filter(c => c.MaBanSao !== maBanSao));
             fetchBooks(); 
         } catch (err) {
-            alert("❌ Không thể xóa (Có thể sách đã từng được mượn).");
+            alert("❌ Không thể xóa (Có thể sách đã từng được mượn/bán).");
         }
     };
 
-    // --- LOGIC PHÂN TRANG CHO SÁCH (Cột Trái) ---
+    // --- LOGIC PHÂN TRANG (Giữ nguyên) ---
     const filteredBooks = books.filter(book => {
         const term = searchTerm.toLowerCase();
         return book.TenSach.toLowerCase().includes(term) || book.MaSach.toLowerCase().includes(term);
@@ -120,7 +126,6 @@ export default function BookStatusManagement() {
     const currentBooks = filteredBooks.slice(indexOfFirstBook, indexOfLastBook);
     const totalPagesBook = Math.ceil(filteredBooks.length / ITEMS_PER_PAGE);
 
-    // --- LOGIC PHÂN TRANG CHO BẢN SAO (Cột Phải) ---
     const filteredCopies = copies.filter(copy => 
         copy.MaBanSao.toLowerCase().includes(searchCopyTerm.toLowerCase())
     );
@@ -155,9 +160,7 @@ export default function BookStatusManagement() {
                         <div className="book-list-scroll">
                             {loading ? <p style={{padding: '10px'}}>Đang tải...</p> : (
                                 currentBooks.length === 0 ? (
-                                    <p style={{padding: '10px', color: '#888', textAlign: 'center'}}>
-                                        Không tìm thấy sách.
-                                    </p>
+                                    <p style={{padding: '10px', color: '#888', textAlign: 'center'}}>Không tìm thấy sách.</p>
                                 ) : (
                                     currentBooks.map(book => (
                                         <div 
@@ -176,22 +179,11 @@ export default function BookStatusManagement() {
                             )}
                         </div>
 
-                        {/* ⭐️ PHÂN TRANG CHO SÁCH */}
                         {totalPagesBook > 1 && (
                             <div className="pagination-controls">
-                                <button 
-                                    disabled={currentPageBook === 1} 
-                                    onClick={() => setCurrentPageBook(prev => prev - 1)}
-                                >
-                                    &lt;
-                                </button>
+                                <button disabled={currentPageBook === 1} onClick={() => setCurrentPageBook(prev => prev - 1)}>&lt;</button>
                                 <span>Trang {currentPageBook} / {totalPagesBook}</span>
-                                <button 
-                                    disabled={currentPageBook === totalPagesBook} 
-                                    onClick={() => setCurrentPageBook(prev => prev + 1)}
-                                >
-                                    &gt;
-                                </button>
+                                <button disabled={currentPageBook === totalPagesBook} onClick={() => setCurrentPageBook(prev => prev + 1)}>&gt;</button>
                             </div>
                         )}
                     </div>
@@ -206,91 +198,71 @@ export default function BookStatusManagement() {
                                     <div style={{flex: 1, marginRight: '20px'}}>
                                         <h3 style={{marginBottom: '8px'}}>{selectedBook.TenSach}</h3>
                                         <input 
-                                            type="text"
-                                            placeholder="🔍 Tìm mã bản sao..."
-                                            value={searchCopyTerm}
+                                            type="text" placeholder="🔍 Tìm mã bản sao..." value={searchCopyTerm}
                                             onChange={(e) => setSearchCopyTerm(e.target.value)}
-                                            style={{
-                                                padding: '6px 10px', border: '1px solid #94a3b8', borderRadius: '4px', width: '100%', maxWidth: '250px', fontSize: '0.9rem'
-                                            }}
+                                            style={{padding: '6px 10px', border: '1px solid #94a3b8', borderRadius: '4px', width: '100%', maxWidth: '250px', fontSize: '0.9rem'}}
                                         />
                                     </div>
 
                                     <div className="import-box">
-                                        <input 
-                                            type="number" min="1" className="qty-input"
-                                            value={importQty} onChange={e => setImportQty(e.target.value)}
-                                        />
-                                        <input 
-                                            type="text" className="loc-input" placeholder="Vị trí (Kệ A...)"
-                                            value={importLocation} onChange={e => setImportLocation(e.target.value)}
-                                        />
+                                        <input type="number" min="1" className="qty-input" value={importQty} onChange={e => setImportQty(e.target.value)} />
+                                        <input type="text" className="loc-input" placeholder="Vị trí (Kệ A...)" value={importLocation} onChange={e => setImportLocation(e.target.value)} />
                                         <button className="btn-import" onClick={handleImport}>+ Nhập Kho</button>
                                     </div>
                                 </div>
 
                                 <div className="copies-table-wrapper">
                                     {loadingCopies ? <p>Đang tải bản sao...</p> : (
-                                        <>
-                                            <table className="copies-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Mã Bản Sao</th>
-                                                        <th>Vị Trí</th>
-                                                        <th>Trạng Thái</th>
-                                                        <th>Thao tác</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {currentCopies.length === 0 ? (
-                                                        <tr><td colSpan="4" className="text-center" style={{padding: '20px', color: '#888'}}>
-                                                            {copies.length === 0 
-                                                                ? "Chưa có bản sao nào. Hãy nhập kho." 
-                                                                : "Không tìm thấy kết quả."}
-                                                        </td></tr>
-                                                    ) : currentCopies.map(copy => (
-                                                        <tr key={copy.MaBanSao}>
-                                                            <td><span className="code-tag">{copy.MaBanSao}</span></td>
-                                                            <td>{copy.ViTriKe}</td>
-                                                            <td>
-                                                                <select 
-                                                                    value={copy.TrangThaiBanSao}
-                                                                    onChange={(e) => handleStatusChange(copy.MaBanSao, e.target.value)}
-                                                                    className={`status-select ${copy.TrangThaiBanSao}`}
-                                                                >
-                                                                    <option value="SanSang">Sẵn sàng</option>
-                                                                    <option value="DangMuon">Đang mượn</option>
-                                                                    <option value="HuHong">Hư hỏng</option>
-                                                                    <option value="Mat">Mất</option>
-                                                                </select>
-                                                            </td>
-                                                            <td>
+                                        <table className="copies-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Mã Bản Sao</th>
+                                                    <th>Vị Trí</th>
+                                                    <th>Trạng Thái</th>
+                                                    <th>Thao tác</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {currentCopies.length === 0 ? (
+                                                    <tr><td colSpan="4" className="text-center" style={{padding: '20px', color: '#888'}}>
+                                                        {copies.length === 0 ? "Chưa có bản sao nào. Hãy nhập kho." : "Không tìm thấy kết quả."}
+                                                    </td></tr>
+                                                ) : currentCopies.map(copy => (
+                                                    <tr key={copy.MaBanSao} className={copy.TrangThaiBanSao === 'DaBan' ? 'row-sold' : ''}>
+                                                        <td><span className="code-tag">{copy.MaBanSao}</span></td>
+                                                        <td>{copy.ViTriKe}</td>
+                                                        <td>
+                                                            {/* 🔥 ĐÃ CẬP NHẬT MENU TRẠNG THÁI */}
+                                                            <select 
+                                                                value={copy.TrangThaiBanSao}
+                                                                onChange={(e) => handleStatusChange(copy.MaBanSao, e.target.value)}
+                                                                className={`status-select ${copy.TrangThaiBanSao}`}
+                                                                disabled={copy.TrangThaiBanSao === 'DaBan'} // Có thể khóa không cho sửa nếu đã bán
+                                                            >
+                                                                <option value="SanSang">Sẵn sàng</option>
+                                                                <option value="DangMuon">Đang mượn</option>
+                                                                <option value="HuHong">Hư hỏng</option>
+                                                                <option value="Mat">Mất</option>
+                                                                <option value="DaBan">Đã bán</option> {/* Thêm dòng này */}
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            {copy.TrangThaiBanSao !== 'DaBan' && (
                                                                 <button className="btn-icon-del" onClick={() => handleDeleteCopy(copy.MaBanSao)}>🗑️</button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     )}
                                 </div>
 
-                                {/* ⭐️ PHÂN TRANG CHO BẢN SAO */}
                                 {totalPagesCopy > 1 && (
                                     <div className="pagination-controls" style={{marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid #f1f5f9'}}>
-                                        <button 
-                                            disabled={currentPageCopy === 1} 
-                                            onClick={() => setCurrentPageCopy(prev => prev - 1)}
-                                        >
-                                            &lt;
-                                        </button>
+                                        <button disabled={currentPageCopy === 1} onClick={() => setCurrentPageCopy(prev => prev - 1)}>&lt;</button>
                                         <span>Trang {currentPageCopy} / {totalPagesCopy}</span>
-                                        <button 
-                                            disabled={currentPageCopy === totalPagesCopy} 
-                                            onClick={() => setCurrentPageCopy(prev => prev + 1)}
-                                        >
-                                            &gt;
-                                        </button>
+                                        <button disabled={currentPageCopy === totalPagesCopy} onClick={() => setCurrentPageCopy(prev => prev + 1)}>&gt;</button>
                                     </div>
                                 )}
                             </>
