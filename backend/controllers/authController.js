@@ -432,9 +432,13 @@ exports.forgotPassword = async (req, res) => {
 // ============================================================
 // ĐẶT LẠI MẬT KHẨU
 // ============================================================
+// ============================================================
+// ĐẶT LẠI MẬT KHẨU (ĐÃ FIX LỖI TRANSACTION & REQUEST)
+// ============================================================
 exports.resetPassword = async (req, res) => {
-    const { token, newPassword } = req.body; 
+    const { token, newPassword } = req.body;
 
+    // Validate dữ liệu đầu vào
     if (!token || !newPassword) {
         return res.status(400).json({ message: 'Thiếu token hoặc mật khẩu mới.' });
     }
@@ -446,12 +450,17 @@ exports.resetPassword = async (req, res) => {
     try {
         const pool = await sql.connect(config);
         transaction = new sql.Transaction(pool);
-        await transaction.begin();
-        const request = transaction.request();
+        await transaction.begin(); // Bắt đầu giao dịch
 
-        // 1. Xác minh token
-        const tokenResult = await request
+        // ----------------------------------------------------
+        // BƯỚC 1: Xác minh token
+        // [QUAN TRỌNG]: Tạo request mới (req1)
+        // ----------------------------------------------------
+        const req1 = new sql.Request(transaction);
+        const tokenResult = await req1
             .input('Token', sql.VarChar, token)
+            // Lưu ý: Code bạn dùng bảng ActivationToken, dù DB có bảng ResetToken [cite: 68]
+            // Mình giữ nguyên theo code cũ của bạn để tránh lỗi bảng
             .query('SELECT MaTK, Expires FROM ActivationToken WHERE Token = @Token');
 
         if (tokenResult.recordset.length === 0) {
@@ -461,38 +470,55 @@ exports.resetPassword = async (req, res) => {
 
         const { MaTK, Expires } = tokenResult.recordset[0];
         
+        // Kiểm tra hết hạn
         if (new Date() > new Date(Expires)) {
             await transaction.rollback();
             return res.status(400).json({ message: 'Token đã hết hạn.' });
         }
 
-        // 2. Cập nhật mật khẩu
+        // ----------------------------------------------------
+        // BƯỚC 2: Cập nhật mật khẩu
+        // [QUAN TRỌNG]: Tạo request hoàn toàn mới (req2)
+        // ----------------------------------------------------
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        const updateResult = await request
-            .input('MaTK', sql.VarChar, MaTK)
-            .input('HashedPassword', sql.VarChar, hashedPassword)
+        
+        // Trim() MaTK để tránh lỗi so sánh chuỗi nếu trong DB lưu thừa khoảng trắng
+        const cleanMaTK = typeof MaTK === 'string' ? MaTK.trim() : MaTK;
+
+        const req2 = new sql.Request(transaction);
+        const updateResult = await req2
+            .input('MaTK', sql.VarChar, cleanMaTK)
+            .input('HashedPassword', sql.VarChar, hashedPassword) // DB varchar(255) là OK 
             .query('UPDATE TaiKhoan SET MatKhau = @HashedPassword WHERE MaTK = @MaTK');
 
         if (updateResult.rowsAffected[0] === 0) {
             await transaction.rollback();
-            return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+            return res.status(404).json({ message: 'Lỗi: Không tìm thấy tài khoản để cập nhật.' });
         }
 
-        // 3. Xóa token
-        await request.query('DELETE FROM ActivationToken WHERE Token = @Token');
+        // ----------------------------------------------------
+        // BƯỚC 3: Xóa token
+        // [QUAN TRỌNG]: Tạo request hoàn toàn mới (req3)
+        // ----------------------------------------------------
+        const req3 = new sql.Request(transaction);
+        await req3
+            .input('Token', sql.VarChar, token)
+            .query('DELETE FROM ActivationToken WHERE Token = @Token');
 
+        // CHỐT GIAO DỊCH: Lưu tất cả thay đổi vào DB
         await transaction.commit();
-        console.log('✅ Password reset successful for MaTK:', MaTK);
-
+        
+        console.log(`✅ Đổi mật khẩu thành công cho MaTK: ${cleanMaTK}`);
         res.status(200).json({ message: 'Đặt lại mật khẩu thành công.' });
 
     } catch (err) {
-        console.error('❌ Reset password error:', err);
-        if (transaction) try { await transaction.rollback(); } catch(e){}
+        console.error('❌ Lỗi Reset Password:', err);
+        if (transaction) {
+            try { await transaction.rollback(); } catch(e) {}
+        }
         res.status(500).json({ message: 'Lỗi server khi đặt lại mật khẩu.' });
     }
 };
-
 // ============================================================
 // CÁC HÀM GET/UPDATE PROFILE
 // ============================================================
