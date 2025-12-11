@@ -21,7 +21,7 @@ import Books from "./pages/page_user/Books";
 import BorrowCart from "./pages/page_user/BorrowCart"; 
 import BorrowHistory from "./pages/page_user/BorrowHistory";
 import BorrowDetail from './pages/page_user/BorrowDetail'; 
-import Checkout from "./pages/page_user/Checkout"; // Trang này đóng vai trò là Giỏ hàng mua
+import Checkout from "./pages/page_user/Checkout"; 
 import Feedback from "./pages/page_user/Feedback";
 import Login from "./pages/page_user/Login";
 import Register from "./pages/page_user/Register";
@@ -33,6 +33,10 @@ import OrderHistory from "./pages/page_user/OrderHistory";
 import OrderDetail from "./pages/page_user/OrderDetail";
 import UserPaymentPage from "./pages/page_user/UserPaymentPage";
 import UserTransactionHistory from "./pages/page_user/UserTransactionHistory";
+
+// 👇 1. THÊM 2 DÒNG IMPORT NÀY (Nhớ lưu file đúng đường dẫn này nhé)
+import PaymentSuccess from "./pages/page_user/PaymentSuccess";
+import PaymentFailed from "./pages/page_user/PaymentFailed";
 
 export default function AppRoutes() {
   return (
@@ -52,15 +56,12 @@ export default function AppRoutes() {
       <Route path="/user/borrow-detail/:maMuon" element={<BorrowDetail />} />
 
       {/* 3. Mua sách & Đơn hàng */}
-      {/* ⭐️ Đổi path thành /cart để khớp với Sidebar */}
       <Route path="/cart" element={<Checkout />} /> 
-      <Route path="/checkout" element={<Checkout />} /> {/* Giữ lại backup */}
+      <Route path="/checkout" element={<Checkout />} /> 
       
       {/* Lịch sử đơn hàng */}
       <Route path="/order-history" element={<OrderHistory />} />
       <Route path="/order-history/:maDH" element={<OrderDetail />} />
-      
-      {/* Alias dự phòng */}
       <Route path="/orders" element={<OrderHistory />} />
 
       {/* 4. Tài khoản & Tiện ích */}
@@ -72,9 +73,13 @@ export default function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* 5. Thanh toán & Lịch sử giao dịch (⭐️ ĐÃ SỬA KHỚP VỚI SIDEBAR) */}
+      {/* 5. Thanh toán & Lịch sử giao dịch */}
       <Route path="/user/payments" element={<UserPaymentPage />}/>
       <Route path="/user/history" element={<UserTransactionHistory />} />
+
+      {/* 👇 2. THÊM ROUTE KẾT QUẢ THANH TOÁN VÀO ĐÂY 👇 */}
+      <Route path="/payment-success" element={<PaymentSuccess />} />
+      <Route path="/payment-failed" element={<PaymentFailed />} />
 
       {/* ================================================= */}
       {/* 🛡️ ADMIN ROUTES (Quản lý) */}
@@ -83,23 +88,15 @@ export default function AppRoutes() {
       {/* Dashboard */}
       <Route path="/admin/dashboard" element={<Dashboard />} />
       
-      {/* Quản lý Sách & Kho */}
+      {/* ... (Các route Admin giữ nguyên) ... */}
       <Route path="/admin/books" element={<BookManagement />} />
       <Route path="/admin/book-status" element={<BookStatusManagement />} />
-
-      {/* Quản lý Mượn - Trả */}
       <Route path="/admin/borrow-orders" element={<AdminBorrowOrders />} />
       <Route path="/admin/borrow-return" element={<AdminBorrowReturn />} />
       <Route path="/admin/return-history" element={<AdminReturnHistory />} />
-
-      {/* Quản lý Đơn hàng Mua */}
       <Route path="/admin/purchase-orders" element={<AdminPurchaseOrders />} />
-
-      {/* Quản lý Người dùng & Nhân viên */}
       <Route path="/admin/users" element={<UserManagement />} />
       <Route path="/admin/staff" element={<StaffManagement />} />
-
-      {/* Báo cáo & Thanh toán */}
       <Route path="/admin/payments" element={<PaymentTransactions />} />
       <Route path="/admin/statistics" element={<StatisticsAndReports />} />
       <Route path="/admin/feedback" element={<AdminFeedback />} />

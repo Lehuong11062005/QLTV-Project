@@ -1,0 +1,112 @@
+/* PaymentResult.css */
+
+/* Căn giữa màn hình, nền xám nhẹ */
+.payment-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f0f2f5;
+  padding: 20px;
+}
+
+/* Khung thẻ thông báo */
+.payment-card {
+  background: white;
+  padding: 40px 30px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 450px;
+  width: 100%;
+  animation: popIn 0.5s ease;
+}
+
+/* Icon trạng thái */
+.status-icon {
+  font-size: 80px;
+  margin-bottom: 20px;
+  display: inline-block;
+}
+
+.success-icon {
+  color: #28a745; /* Màu xanh lá */
+}
+
+.failed-icon {
+  color: #dc3545; /* Màu đỏ */
+}
+
+/* Tiêu đề */
+.payment-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+/* Nội dung chi tiết */
+.payment-info {
+  font-size: 16px;
+  color: #666;
+  margin-bottom: 30px;
+  line-height: 1.5;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.payment-info strong {
+  color: #333;
+  display: block;
+  margin-top: 5px;
+  font-size: 18px;
+}
+
+/* Nhóm nút bấm */
+.btn-group {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+/* Style chung cho nút */
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+/* Nút chính (Màu xanh/đỏ tùy ngữ cảnh) */
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+.btn-primary:hover {
+  background-color: #0056b3;
+  box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+}
+
+/* Nút phụ (Màu xám) */
+.btn-secondary {
+  background-color: #e9ecef;
+  color: #333;
+}
+.btn-secondary:hover {
+  background-color: #dde0e3;
+}
+
+/* Hiệu ứng hiện ra */
+@keyframes popIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}

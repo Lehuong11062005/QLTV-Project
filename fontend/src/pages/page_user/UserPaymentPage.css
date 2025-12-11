@@ -1,19 +1,139 @@
-.payment-container { max-width: 900px; margin: 0 auto; padding: 20px; }
-.page-title { border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 30px; color: #1e3a8a; }
-.section-block { margin-bottom: 40px; }
-.section-title { margin-bottom: 15px; font-size: 1.2rem; border-left: 4px solid #2563eb; padding-left: 10px; }
-.text-red { color: #dc2626; border-color: #dc2626; }
-.empty-text { font-style: italic; color: #6b7280; background: #f9fafb; padding: 15px; border-radius: 8px; }
+/* src/pages/page_user/UserPaymentPage.css */
 
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-.pay-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; }
-.fine-card { border-left: 4px solid #dc2626; }
+/* --- 1. KHUNG CHỨA CHÍNH (Quan trọng để đẩy mọi thứ xuống dưới) --- */
+.payment-container {
+  display: block !important; /* 🔥 BẮT BUỘC: Để xếp chồng từ trên xuống */
+  width: 100% !important;    /* Chiếm full chiều rộng */
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 30px;
+  min-height: 80vh; /* Đảm bảo khung đủ cao */
+}
 
-.pay-card-header { background: #f8fafc; padding: 12px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; }
-.pay-card-body { padding: 15px; flex: 1; }
-.money-highlight { font-size: 1.4rem; font-weight: bold; color: #2563eb; margin: 10px 0 0 0; }
-.pay-card-footer { padding: 15px; background: #fff; border-top: 1px solid #eee; text-align: right; }
+/* 1. Tiêu đề to đùng ở trên cùng */
+.page-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #1e3a8a;
+  border-bottom: 3px solid #2563eb; /* Gạch chân */
+  padding-bottom: 15px;
+  margin-bottom: 30px;
+  text-align: left; /* Căn trái */
+  width: 100%;
+  display: block;
+}
 
-.status-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; color: white; }
-.status-badge.pending { background: #d97706; }
-.status-badge.error { background: #dc2626; }
+/* 2. Tiêu đề mục nhỏ hơn */
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 20px;
+  border-left: 5px solid #2563eb; /* Vạch xanh bên trái */
+  padding-left: 15px;
+  display: block;
+}
+
+/* 3. Lưới hiển thị Card (Sửa lỗi dính chùm) */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 25px;
+  width: 100%; /* Full rộng để không bị co cụm */
+}
+
+/* --- 5. THIẾT KẾ TỪNG BOX ĐƠN HÀNG --- */
+.pay-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px; /* Bo góc tròn hơn */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  /* Flex Column để căn chỉnh nội dung dọc */
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Bắt buộc chiếm hết chiều cao ô grid */
+  overflow: hidden;
+}
+
+.pay-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 30px rgba(37, 99, 235, 0.15);
+  border-color: #2563eb;
+}
+
+/* HEADER CỦA BOX */
+.pay-card-header {
+  padding: 15px 20px;
+  background: linear-gradient(to right, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pay-card-header span:first-child {
+    font-weight: 700;
+    color: #1e3a8a;
+    font-size: 1.05rem;
+}
+
+/* BODY CỦA BOX */
+.pay-card-body {
+  padding: 20px;
+  flex: 1; /* Đẩy Footer xuống đáy */
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.pay-card-body p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #64748b;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed #eee; /* Dòng kẻ mờ giữa các thông tin */
+  padding-bottom: 8px;
+}
+
+.pay-card-body b { color: #333; }
+
+/* SỐ TIỀN NỔI BẬT */
+.money-highlight {
+  font-size: 1.6rem !important;
+  font-weight: 800;
+  color: #dc2626 !important;
+  text-align: center;
+  margin: 15px 0 5px 0 !important;
+  display: block;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+/* FOOTER CỦA BOX (CHỨA NÚT) */
+.pay-card-footer {
+  padding: 20px;
+  background: #fff;
+  border-top: 1px solid #eee;
+  margin-top: auto; /* Luôn nằm dưới cùng */
+}
+
+/* NÚT BẤM */
+.pay-card-footer button,
+.pay-card-footer .btn-momo {
+  width: 100% !important;
+  padding: 12px 0;
+  font-size: 1rem;
+  border-radius: 8px;
+}
+
+.btn-bank-pay {
+  background: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-bank-pay:hover { background: #1d4ed8; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+
+/* Badge trạng thái và Empty text */
+.status-badge { font-size: 0.75rem; padding: 4px 12px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.status-badge.pending { background: #fff7ed; color: #ea580c; border: 1px solid #ffedd5; }
+.empty-text { text-align: center; font-style: italic; color: #6b7280; background: #f9fafb; padding: 40px; border-radius: 12px; border: 2px dashed #e5e7eb; }

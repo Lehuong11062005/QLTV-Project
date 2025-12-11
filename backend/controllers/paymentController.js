@@ -1,82 +1,84 @@
-// controllers/paymentController.js
 const sql = require('mssql');
 const config = require('../db/dbConfig');
 const axios = require('axios');
 const crypto = require('crypto');
 
-// CẤU HÌNH MOMO (Dùng tài khoản TEST của bạn)
+// ============================================================
+// CẤU HÌNH MÔI TRƯỜNG (ENVIRONMENT VARIABLES)
+// ============================================================
+// Lấy từ file .env hoặc biến môi trường trên Server (Render)
+const PARTNER_CODE = process.env.MOMO_PARTNER_CODE || "MOMO";
+const ACCESS_KEY = process.env.MOMO_ACCESS_KEY || "F8BBA842ECF85"; // Key test mặc định
+const SECRET_KEY = process.env.MOMO_SECRET_KEY || "K951B6PE1waDMi640xX08PD3vg6EkVlz"; // Key test mặc định
+
+// ⚠️ QUAN TRỌNG: Cấu hình Domain
+// BACKEND_URL: Link server API của bạn (VD: https://api-thuvien.onrender.com)
+// FRONTEND_URL: Link trang web giao diện (VD: https://web-thuvien.vercel.app)
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+
 const MOMO_CONFIG = {
-    partnerCode: "MOMO", 
-    accessKey: "F8BBA842ECF85", 
-    secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz", 
+    partnerCode: PARTNER_CODE,
+    accessKey: ACCESS_KEY,
+    secretKey: SECRET_KEY,
     endpoint: "https://test-payment.momo.vn/v2/gateway/api/create",
-    redirectUrl: "http://localhost:3000/payment-result", 
-    ipnUrl: "https://webhook.site/..." // Điền link webhook thật nếu có
+    // Redirect về Backend để xử lý điều hướng
+    redirectUrl: `${BACKEND_URL}/api/payment/payment-result`,
+    // Webhook để MoMo gọi ngầm báo kết quả
+    ipnUrl: `${BACKEND_URL}/api/payment/momo-ipn`
 };
 
 const generateTransId = () => `MOMO${Date.now()}`;
 
 // ============================================================
-// 1. TẠO URL THANH TOÁN (ĐÃ SỬA: LẤY TIỀN TỪ DB)
+// 1. TẠO URL THANH TOÁN
 // ============================================================
 exports.createPaymentUrl = async (req, res) => {
-    // Chỉ cần loaiGiaoDich và referenceId. Amount sẽ tự tính lại.
     const { loaiGiaoDich, referenceId } = req.body;
 
     try {
         const pool = await sql.connect(config);
-        
-        // 1. 🔥 QUAN TRỌNG: Lấy số tiền thực tế từ Database
         let amount = 0;
-        
+
+        // --- Lấy số tiền từ Database ---
         if (loaiGiaoDich === 'DonHang') {
-            // Lấy TongTien từ bảng DonHang
             const orderResult = await pool.request()
                 .input('MaDH', sql.VarChar, referenceId)
                 .query("SELECT TongTien FROM DonHang WHERE MaDH = @MaDH");
             
-            if (orderResult.recordset.length === 0) {
-                return res.status(404).json({ message: "Không tìm thấy đơn hàng." });
-            }
+            if (orderResult.recordset.length === 0) return res.status(404).json({ message: "Không tìm thấy đơn hàng." });
             amount = orderResult.recordset[0].TongTien;
 
         } else if (loaiGiaoDich === 'PhiPhat') {
-            // Lấy TongTienPhat từ bảng TraSach
             const fineResult = await pool.request()
                 .input('MaTra', sql.VarChar, referenceId)
                 .query("SELECT TongTienPhat FROM TraSach WHERE MaTra = @MaTra");
             
-            if (fineResult.recordset.length === 0) {
-                return res.status(404).json({ message: "Không tìm thấy phiếu trả sách." });
-            }
+            if (fineResult.recordset.length === 0) return res.status(404).json({ message: "Không tìm thấy phiếu trả sách." });
             amount = fineResult.recordset[0].TongTienPhat;
+
         } else {
             return res.status(400).json({ message: "Loại giao dịch không hợp lệ." });
         }
 
-        // Kiểm tra nếu số tiền <= 0 hoặc null
-        if (!amount || amount <= 0) {
-            return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ (0đ)." });
-        }
-        
-        // Chuyển amount về dạng số nguyên (Momo yêu cầu không có số thập phân)
+        if (!amount || amount <= 0) return res.status(400).json({ message: "Số tiền không hợp lệ." });
         amount = Math.round(amount);
 
-        // 2. Tiếp tục quy trình Momo như cũ
-        const orderId = generateTransId(); 
+        // --- Tạo giao dịch MoMo ---
+        const orderId = generateTransId();
         const requestId = orderId;
         const orderInfo = `Thanh toan ${loaiGiaoDich} ${referenceId}`;
+        const maTT = `TT${Date.now().toString().slice(-8)}`;
         
-        const maTT = `TT${Date.now().toString().slice(-8)}`; 
         let maDH = loaiGiaoDich === 'DonHang' ? referenceId : null;
         let maPhat = loaiGiaoDich === 'PhiPhat' ? referenceId : null;
 
-        // Lưu vào bảng ThanhToan
+        // Lưu trạng thái 'KhoiTao' vào DB
         await pool.request()
             .input('MaTT', sql.VarChar, maTT)
             .input('MaDH', sql.VarChar, maDH)
             .input('MaPhat', sql.VarChar, maPhat)
-            .input('SoTien', sql.Decimal, amount) // Lưu đúng số tiền lấy từ DB
+            .input('SoTien', sql.Decimal, amount)
             .input('MaGiaoDich', sql.VarChar, orderId)
             .input('LoaiGiaoDich', sql.NVarChar, loaiGiaoDich)
             .query(`
@@ -84,13 +86,14 @@ exports.createPaymentUrl = async (req, res) => {
                 VALUES (@MaTT, @MaDH, @MaPhat, 'MoMo', @SoTien, N'KhoiTao', @MaGiaoDich, GETDATE(), @LoaiGiaoDich)
             `);
 
-        // Tạo chữ ký Momo
+        // Tạo chữ ký (Signature)
         const rawSignature = `accessKey=${MOMO_CONFIG.accessKey}&amount=${amount}&extraData=&ipnUrl=${MOMO_CONFIG.ipnUrl}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${MOMO_CONFIG.partnerCode}&redirectUrl=${MOMO_CONFIG.redirectUrl}&requestId=${requestId}&requestType=captureWallet`;
-
+        
         const signature = crypto.createHmac('sha256', MOMO_CONFIG.secretKey)
             .update(rawSignature)
             .digest('hex');
 
+        // Gửi request sang MoMo
         const requestBody = {
             partnerCode: MOMO_CONFIG.partnerCode,
             partnerName: "Thu Vien Nhom 10",
@@ -113,21 +116,24 @@ exports.createPaymentUrl = async (req, res) => {
 
     } catch (err) {
         console.error("Lỗi tạo thanh toán:", err);
-        return res.status(500).json({ message: "Lỗi tạo giao dịch: " + err.message });
+        return res.status(500).json({ message: "Lỗi Server: " + err.message });
     }
 };
 
 // ============================================================
-// 2. XỬ LÝ IPN (MOMO GỌI LẠI) - ĐÃ CẬP NHẬT ĐỂ ĐỒNG BỘ
+// 2. XỬ LÝ IPN (WEBHOOK TỪ MOMO) - TỰ ĐỘNG DUYỆT ĐƠN
 // ============================================================
 exports.handleMomoCallback = async (req, res) => {
-    const { resultCode, orderId } = req.body; // Không cần tin tưởng 'amount' từ Momo gửi về, chỉ cần check orderId
+    const { resultCode, orderId } = req.body;
     
-    if (resultCode === 0) {
+    // Luôn trả về 204 No Content trước để MoMo không gọi lại nhiều lần
+    // Server sẽ tự xử lý ngầm bên dưới
+    
+    if (resultCode == 0) {
         try {
             const pool = await sql.connect(config);
             
-            // Cập nhật trạng thái ThanhToan
+            // 1. Cập nhật trạng thái trong bảng ThanhToan -> 'HoanThanh'
             const result = await pool.request()
                 .input('MaGiaoDich', sql.VarChar, orderId)
                 .query(`
@@ -140,36 +146,43 @@ exports.handleMomoCallback = async (req, res) => {
             if (result.recordset.length > 0) {
                 const { LoaiGiaoDich, MaDH, MaPhat, SoTien } = result.recordset[0];
 
-                // Cập nhật trạng thái nghiệp vụ chính
+                // 2. Nếu là Đơn Hàng -> TỰ ĐỘNG DUYỆT
                 if (LoaiGiaoDich === 'DonHang' && MaDH) {
-                    // Cập nhật trạng thái Đơn Hàng
-                    // ⚠️ Đảm bảo TongTien trong đơn hàng khớp với số tiền đã thanh toán (Optional: Update lại lần nữa cho chắc)
                     await pool.request()
                         .input('MaDH', sql.VarChar, MaDH)
-                        .input('TongTien', sql.Decimal, SoTien) 
+                        .input('TongTien', sql.Decimal, SoTien)
                         .query(`
                             UPDATE DonHang 
-                            SET TrangThaiThanhToan = N'DaThanhToan',
-                                TrangThai = N'DangGiao', -- Chuyển trạng thái để admin biết đường giao
-                                TongTien = @TongTien     -- Cập nhật lại giá chốt cuối cùng (để khớp báo cáo)
+                            SET 
+                                -- Xác nhận đã nhận tiền
+                                TrangThaiThanhToan = N'DaThanhToan',
+                                
+                                -- 🔥 QUAN TRỌNG: Tự động chuyển trạng thái sang 'Đang Giao' 
+                                -- (Admin thấy đơn này là đi giao luôn, không cần bấm duyệt nữa)
+                                TrangThai = N'DangGiao',
+                                
+                                -- Cập nhật lại số tiền chốt sổ
+                                TongTien = @TongTien
                             WHERE MaDH = @MaDH
                         `);
+                    console.log(`✅ Auto-Approve: Đơn hàng ${MaDH} đã thanh toán & chuyển sang Đang Giao.`);
                 } 
+                
+                // 3. Nếu là Phí Phạt -> Cập nhật tiền phạt
                 else if (LoaiGiaoDich === 'PhiPhat' && MaPhat) {
-                    // Với phí phạt, MaPhat = MaTra
-                    // Cập nhật lại TongTienPhat trong bảng TraSach cho khớp số tiền đã trả
                     await pool.request()
-                         .input('MaTra', sql.VarChar, MaPhat)
-                         .input('TongTienPhat', sql.Decimal, SoTien)
-                         .query(`
+                        .input('MaTra', sql.VarChar, MaPhat)
+                        .input('TongTienPhat', sql.Decimal, SoTien)
+                        .query(`
                             UPDATE TraSach 
-                            SET TongTienPhat = @TongTienPhat -- Cập nhật giá chốt
+                            SET TongTienPhat = @TongTienPhat
                             WHERE MaTra = @MaTra
-                         `);
+                        `);
+                    console.log(`✅ Phí phạt ${MaPhat} đã được thanh toán.`);
                 }
             }
         } catch (err) {
-            console.error("Lỗi cập nhật DB từ IPN:", err);
+            console.error("❌ Lỗi IPN Update DB:", err);
         }
     } else {
         // Giao dịch thất bại
@@ -185,7 +198,25 @@ exports.handleMomoCallback = async (req, res) => {
 };
 
 // ============================================================
-// 3. LẤY LỊCH SỬ GIAO DỊCH (ADMIN)
+// 3. XỬ LÝ REDIRECT (Đưa người dùng về Frontend)
+// ============================================================
+exports.checkPaymentResult = async (req, res) => {
+    // MoMo redirect về đây kèm theo params
+    const { resultCode, orderId, message } = req.query;
+
+    // Điều hướng về trang Frontend
+    // Bạn nhớ tạo route bên Frontend (React/Vue/HTML) để đón
+    if (resultCode == 0) {
+        // Ví dụ: https://web-cua-ban.vercel.app/thanh-cong?orderId=...
+        return res.redirect(`${FRONTEND_URL}/payment-success?orderId=${orderId}`);
+    } else {
+        // Ví dụ: https://web-cua-ban.vercel.app/that-bai?reason=...
+        return res.redirect(`${FRONTEND_URL}/payment-failed?reason=${encodeURIComponent(message)}`);
+    }
+};
+
+// ============================================================
+// 4. LẤY LỊCH SỬ GIAO DỊCH (ADMIN)
 // ============================================================
 exports.getTransactionList = async (req, res) => {
     try {
@@ -210,13 +241,12 @@ exports.getTransactionList = async (req, res) => {
         `);
         res.json(result.recordset);
     } catch (err) {
-        console.error("Lỗi lấy lịch sử giao dịch:", err);
         res.status(500).json({ message: "Lỗi server." });
     }
 };
 
 // ============================================================
-// 4. LẤY LỊCH SỬ GIAO DỊCH (USER)
+// 5. LẤY LỊCH SỬ GIAO DỊCH (USER/ĐỘC GIẢ)
 // ============================================================
 exports.getMyTransactions = async (req, res) => {
     const { MaDG } = req.user;
@@ -245,9 +275,11 @@ exports.getMyTransactions = async (req, res) => {
     }
 };
 
+// ============================================================
+// 6. CẬP NHẬT TRẠNG THÁI THỦ CÔNG (ADMIN)
+// ============================================================
 exports.updateTransactionStatus = async (req, res) => {
-    const { maTT, trangThai } = req.body; // trangThai thường là 'HoanThanh'
-
+    const { maTT, trangThai } = req.body;
     let transaction;
     try {
         const pool = await sql.connect(config);
@@ -255,64 +287,42 @@ exports.updateTransactionStatus = async (req, res) => {
         await transaction.begin();
         const request = new sql.Request(transaction);
 
-        // 1. Cập nhật bảng ThanhToan
-        request.input('MaTT', sql.VarChar, maTT);
-        request.input('TrangThai', sql.NVarChar, trangThai);
-        
-        await request.query(`
-            UPDATE ThanhToan 
-            SET TrangThai = @TrangThai 
-            WHERE MaTT = @MaTT
-        `);
+        // Update bảng ThanhToan
+        await request.query(`UPDATE ThanhToan SET TrangThai = '${trangThai}' WHERE MaTT = '${maTT}'`);
 
-        // 2. 🔥 LOGIC TỰ ĐỘNG ĐỒNG BỘ ĐƠN HÀNG 🔥
+        // Đồng bộ nếu Hoàn Thành
         if (trangThai === 'HoanThanh') {
-            // Tìm Mã Đơn Hàng (MaDH) gắn với giao dịch này
-            // (Dùng request của transaction để đảm bảo nhất quán)
-            const transResult = await request.query(`SELECT MaDH FROM ThanhToan WHERE MaTT = @MaTT`);
-            
+            const transResult = await request.query(`SELECT MaDH FROM ThanhToan WHERE MaTT = '${maTT}'`);
             if (transResult.recordset.length > 0) {
                 const maDH = transResult.recordset[0].MaDH;
-
-                // Nếu có MaDH (tức là thanh toán cho đơn hàng), cập nhật đơn hàng luôn
                 if (maDH) {
-                    await request.query(`
-                        UPDATE DonHang 
-                        SET TrangThaiThanhToan = N'DaThanhToan' 
-                        WHERE MaDH = '${maDH}'
-                    `);
-                    console.log(`✅ Đã đồng bộ trạng thái 'DaThanhToan' cho đơn hàng: ${maDH}`);
+                    await request.query(`UPDATE DonHang SET TrangThaiThanhToan = N'DaThanhToan' WHERE MaDH = '${maDH}'`);
                 }
             }
         }
-
         await transaction.commit();
-        res.status(200).json({ message: "Cập nhật thành công & Đã đồng bộ đơn hàng!" });
-
+        res.status(200).json({ message: "Cập nhật thành công!" });
     } catch (error) {
         if (transaction) await transaction.rollback();
-        console.error("Lỗi cập nhật giao dịch:", error);
-        res.status(500).json({ message: "Lỗi server khi cập nhật trạng thái." });
+        res.status(500).json({ message: "Lỗi server." });
     }
 };
+
 // ============================================================
-// 5. XÁC NHẬN THANH TOÁN TIỀN MẶT (CHO ĐƠN COD)
-// Hàm này sẽ được gọi từ orderController khi Admin bấm "Hoàn thành"
+// 7. GIAO DỊCH TIỀN MẶT COD (INTERNAL)
 // ============================================================
 exports.createCODTransaction = async (maDH, soTien) => {
     try {
         const pool = await sql.connect(config);
-        const maTT = `COD${Date.now().toString().slice(-8)}`;
-        const maGiaoDich = `CASH_${maDH}`; // Mã tham chiếu nội bộ
-
-        // Kiểm tra xem đã có giao dịch chưa để tránh trùng lặp
+        // Check trùng
         const check = await pool.request()
             .input('MaDH', sql.VarChar, maDH)
             .query("SELECT MaTT FROM ThanhToan WHERE MaDH = @MaDH AND TrangThai = N'HoanThanh'");
-        
-        if (check.recordset.length > 0) return; // Đã có rồi thì thôi
+        if (check.recordset.length > 0) return true;
 
-        // Insert vào bảng ThanhToan
+        const maTT = `COD${Date.now().toString().slice(-8)}`;
+        const maGiaoDich = `CASH_${maDH}`;
+
         await pool.request()
             .input('MaTT', sql.VarChar, maTT)
             .input('MaDH', sql.VarChar, maDH)
@@ -322,11 +332,9 @@ exports.createCODTransaction = async (maDH, soTien) => {
                 INSERT INTO ThanhToan (MaTT, MaDH, PhuongThuc, SoTien, TrangThai, MaGiaoDich, NgayThanhToan, LoaiGiaoDich)
                 VALUES (@MaTT, @MaDH, 'COD', @SoTien, N'HoanThanh', @MaGiaoDich, GETDATE(), 'DonHang')
             `);
-            
-        console.log(`✅ Đã tạo giao dịch COD cho đơn ${maDH}`);
         return true;
     } catch (err) {
-        console.error("❌ Lỗi tạo giao dịch COD:", err);
+        console.error("Lỗi COD:", err);
         return false;
     }
 };

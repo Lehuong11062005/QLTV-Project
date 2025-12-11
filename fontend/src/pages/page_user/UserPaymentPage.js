@@ -1,3 +1,5 @@
+// src/pages/page_user/UserPaymentPage.js
+
 import React, { useState, useEffect } from "react";
 import Layout from "../../components/Layout";
 import { getOrders } from "../../services/orderService"; 
@@ -19,43 +21,56 @@ export default function UserPaymentPage() {
     const fetchUnpaidOrders = async () => {
         setLoading(true);
         try {
-            // Chỉ cần gọi API lấy đơn hàng
             const res = await getOrders();
+            // Lấy đúng mảng data từ JSON bạn gửi
             const list = res.data?.data || res.data || [];
 
+            console.log("Tổng số đơn hàng tải về:", list.length);
+
             const onlineUnpaid = list.filter(o => {
-                // 1. Chuẩn hóa phương thức thanh toán
-                const method = (o.phuongThucThanhToan || o.HinhThucThanhToan || '').toLowerCase();
-                const isOnline = method === 'momo' || method === 'bank';
+                // --- BƯỚC 1: CHUẨN HÓA DỮ LIỆU (Về chữ hoa để so sánh) ---
+                const method = (o.phuongThucThanhToan || o.HinhThucThanhToan || '').toUpperCase();
+                const paymentStatus = (o.trangThaiThanhToan || o.TrangThaiThanhToan || '').toUpperCase();
+                const orderStatus = (o.trangThai || o.TrangThai || '').toUpperCase();
+
+                // --- BƯỚC 2: CÁC ĐIỀU KIỆN ĐỂ ẨN ĐƠN HÀNG ---
                 
-                // 2. Kiểm tra chưa thanh toán
-                const statusPay = (o.trangThaiThanhToan || o.TrangThaiThanhToan || 'ChuaThanhToan');
-                const isUnpaid = statusPay === 'ChuaThanhToan' || (!statusPay && o.trangThai !== 'HoanThanh');
+                // 1. Nếu không phải MoMo hoặc Bank -> ẨN (Ví dụ: COD, Tiền mặt)
+                const isOnline = method.includes('MOMO') || method.includes('BANK');
+                if (!isOnline) return false;
 
-                // 3. Đơn còn hiệu lực
-                const isActive = o.trangThai !== 'DaHuy';
+                // 2. Nếu đã trả tiền (DATHANHTOAN) -> ẨN NGAY
+                if (paymentStatus === 'DATHANHTOAN') return false;
 
-                return isOnline && isUnpaid && isActive;
+                // 3. Nếu đơn hàng đã xong hoặc hủy -> ẨN LUÔN
+                // (Dù tiền là "ChuaThanhToan" nhưng đơn đã HoanThanh thì không đòi nữa)
+                const finishedStatuses = ['HOANTHANH', 'DANGGIAO', 'DADUYET', 'DAHUY'];
+                if (finishedStatuses.includes(orderStatus)) return false;
+
+                // 👉 Chỉ hiện khi: Là Online + Chưa trả tiền + Đơn chưa xong
+                return true;
             });
 
+            console.log("Số đơn cần thanh toán sau khi lọc:", onlineUnpaid.length);
             setOrders(onlineUnpaid);
+            
         } catch (error) {
             console.error("Lỗi tải đơn:", error);
         } finally {
             setLoading(false);
         }
     };
-
     const handleManualPaymentSuccess = (orderId) => {
         setSelectedBankOrder(null);
-        // Ẩn đơn hàng vừa trả khỏi danh sách
+        // Ẩn ngay đơn hàng vừa trả khỏi giao diện
         setOrders(prev => prev.filter(o => (o.maDH || o.MaDH) !== orderId));
-        alert("✅ Đã ghi nhận! Đơn hàng sẽ ẩn đi để chờ Admin duyệt.");
+        alert("✅ Đã ghi nhận! Hệ thống sẽ kiểm tra và duyệt đơn trong giây lát.");
     };
 
     return (
         <Layout>
             <div className="payment-container">
+                {/* Tiêu đề trang nằm trên cùng */}
                 <h2 className="page-title">💳 Cổng Thanh Toán Online</h2>
 
                 {loading ? <p>Đang tải...</p> : (
@@ -76,12 +91,23 @@ export default function UserPaymentPage() {
                                         <div key={orderID} className="pay-card">
                                             <div className="pay-card-header">
                                                 <span>Đơn #{orderID}</span>
-                                                <span className="status-badge pending">{order.trangThai}</span>
+                                                <span className="status-badge pending">
+                                                    {order.trangThai || 'Chờ thanh toán'}
+                                                </span>
                                             </div>
+                                            
                                             <div className="pay-card-body">
-                                                <p>Ngày đặt: {order.ngayTao ? new Date(order.ngayTao).toLocaleDateString('vi-VN') : 'N/A'}</p>
-                                                <p>Hình thức: <b style={{textTransform:'capitalize'}}>{method}</b></p>
-                                                <p className="money-highlight">{amount?.toLocaleString()} đ</p>
+                                                <p>
+                                                    <span>Ngày đặt:</span> 
+                                                    <b>{order.ngayTao ? new Date(order.ngayTao).toLocaleDateString('vi-VN') : 'N/A'}</b>
+                                                </p>
+                                                <p>
+                                                    <span>Hình thức:</span> 
+                                                    <b style={{textTransform:'capitalize'}}>{method === 'momo' ? 'Ví MoMo' : 'Ngân Hàng'}</b>
+                                                </p>
+                                                <span className="money-highlight">
+                                                    {amount?.toLocaleString()} đ
+                                                </span>
                                             </div>
                                             
                                             <div className="pay-card-footer">
@@ -92,14 +118,9 @@ export default function UserPaymentPage() {
                                                 {method === 'bank' && (
                                                     <button 
                                                         className="btn-bank-pay"
-                                                        style={{
-                                                            background: '#2563eb', color:'white', 
-                                                            border:'none', padding:'8px 15px', 
-                                                            borderRadius:'4px', cursor:'pointer', width:'100%'
-                                                        }}
                                                         onClick={() => setSelectedBankOrder({ maDH: orderID, tongTien: amount })}
                                                     >
-                                                        🏦 Lấy mã QR Chuyển khoản
+                                                        🏦 Lấy mã QR Bank
                                                     </button>
                                                 )}
                                             </div>
