@@ -250,62 +250,75 @@ export default function StaffManagement() {
 
     return (
         <Layout>
-            <h2 style={{ borderBottom: "2px solid #ccc", paddingBottom: "10px" }}>
-                💼 Quản lý Nhân viên (Thủ thư, Admin)
-            </h2>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <p>Tổng số Nhân viên: <span style={{fontWeight: 'bold', color: '#1f2937'}}>{staffList.length}</span></p>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="btn-primary btn-add-staff"
-                    disabled={isSubmitting}
-                >
-                    ➕ Thêm Nhân viên Mới
-                </button>
+            {/* --- SỬA LẠI PHẦN HEADER NÀY ĐỂ HẾT BỊ LỖI --- */}
+            <div className="page-header">
+                <h2 className="page-title">
+                    💼 Quản lý Nhân viên (Thủ thư, Admin)
+                </h2>
+                
+                {/* Gom nhóm số lượng và nút bấm vào trong div này */}
+                <div className="page-actions">
+                    <span className="count-badge">Tổng: {staffList.length}</span>
+                    <button 
+                        onClick={() => handleOpenModal()} 
+                        className="btn-primary"
+                        disabled={isSubmitting}
+                    >
+                        ➕ Thêm Nhân viên Mới
+                    </button>
+                </div>
             </div>
-            {error && <p style={{ color: '#dc2626', marginBottom: '15px' }}>{error}</p>}
 
-            <table className="admin-table">
-                <thead>
-                    <tr>
-                        <th>Mã NV</th>
-                        <th>Họ tên</th>
-                        <th>Tên đăng nhập</th>
-                        <th>Vai trò</th>
-                        <th>Email/SĐT</th>
-                        <th>Trạng thái TK</th>
-                        <th style={{ textAlign: "center" }}>Hành động</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {staffList.length === 0 ? (
-                         <tr>
-                             <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
-                                 Không tìm thấy nhân viên nào.
-                             </td>
-                         </tr>
-                    ) : (
-                        staffList.map((staff) => (
-                            <tr key={staff.MaTT}> 
-                                <td>{staff.MaTT}</td>
-                                <td style={{ fontWeight: '500' }}>{staff.HoTen}</td>
-                                <td>{staff.TenDangNhap}</td>
-                                <td>{staff.Role}</td> 
-                                <td>{staff.Email} / {staff.SDT}</td>
-                                <td>
-                                    <span className={getStatusStyle(staff.TaiKhoanTrangThai)}>{staff.TaiKhoanTrangThai}</span>
-                                </td>
-                                <td style={{ textAlign: "center" }}>
-                                    <button onClick={() => handleOpenModal(staff)} disabled={isSubmitting} className="btn-edit">✏️ Sửa</button>
-                                    <button onClick={() => handleDelete(staff.MaTT, staff.HoTen)} disabled={isSubmitting} className="btn-delete">🗑️ Xóa</button>
-                                </td>
-                            </tr>
-                        ))
-                    )}
-                </tbody>
-            </table>
+            {error && <div className="error-message">{error}</div>}
+
+            <div className="table-container">
+                <table className="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Mã NV</th>
+                            <th>Họ tên</th>
+                            <th>Tên đăng nhập</th>
+                            <th>Vai trò</th>
+                            <th>Email/SĐT</th>
+                            <th>Trạng thái TK</th>
+                            <th className="text-center">Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {staffList.length === 0 ? (
+                             <tr><td colSpan="7" className="empty-state">Không tìm thấy nhân viên nào.</td></tr>
+                        ) : (
+                            staffList.map((staff) => (
+                                <tr key={staff.MaTT}> 
+                                    <td className="text-mono">{staff.MaTT}</td>
+                                    <td className="font-bold">{staff.HoTen}</td>
+                                    <td>{staff.TenDangNhap}</td>
+                                    <td>
+                                        <span className={`badge-role ${staff.Role === 'Admin' ? 'role-admin' : 'role-thuthu'}`}>
+                                            {staff.Role}
+                                        </span>
+                                    </td> 
+                                    <td className="text-small">
+                                        <div>{staff.Email}</div>
+                                        <div>{staff.SDT}</div>
+                                    </td>
+                                    <td>
+                                        <span className={`badge-status ${staff.TaiKhoanTrangThai === 'HoatDong' ? 'active' : 'inactive'}`}>
+                                            {staff.TaiKhoanTrangThai}
+                                        </span>
+                                    </td>
+                                    <td className="action-cells">
+                                        <button onClick={() => handleOpenModal(staff)} className="btn-icon btn-edit" title="Sửa">✏️</button>
+                                        <button onClick={() => handleDelete(staff.MaTT, staff.HoTen)} className="btn-icon btn-delete" title="Xóa">🗑️</button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
             
+            {/* Modal giữ nguyên logic */}
             {isModalOpen && (
                 <StaffFormModal 
                     staff={currentStaff}
