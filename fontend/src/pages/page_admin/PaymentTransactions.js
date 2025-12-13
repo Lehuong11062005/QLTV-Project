@@ -151,15 +151,15 @@ export default function PaymentTransactions() {
                         <div className="card-label">TỔNG THỰC THU</div>
                         <div className="card-value">{formatCurrency(stats.totalReal)}</div>
                     </div>
-                    <div className="summary-card">
+                    <div className="summary-card" style={{background: 'linear-gradient(135deg, #b2ffd5ff, #37f599ff)'}}>
                         <div className="card-label">Qua Ngân hàng</div>
                         <div className="card-value sm" style={{color:'#1e40af'}}>{formatCurrency(stats.viaBank)}</div>
                     </div>
-                    <div className="summary-card">
+                    <div className="summary-card" style={{background: 'linear-gradient(135deg, #f398c7ff, #f74da5ff)'}}>
                         <div className="card-label">Qua MoMo</div>
                         <div className="card-value sm" style={{color:'#be185d'}}>{formatCurrency(stats.viaMoMo)}</div>
                     </div>
-                    <div className="summary-card">
+                    <div className="summary-card" style={{background: 'linear-gradient(135deg, #FCA5A5, #f65f5fff)'}}>
                         <div className="card-label">Tiền mặt / COD</div>
                         <div className="card-value sm" style={{color:'#334155'}}>{formatCurrency(stats.viaCash)}</div>
                     </div>
