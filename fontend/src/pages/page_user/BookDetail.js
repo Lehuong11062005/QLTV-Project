@@ -221,15 +221,20 @@ export default function BookDetail() {
 
                 <div className="book-detail-content">
                     <div className="book-image-section">
-                        <img 
-                            src={book.AnhMinhHoa} 
-                            alt={book.TenSach} 
-                            className="book-detail-image"
-                            onError={(e) => {
-                                e.target.src = "https://via.placeholder.com/300x400.png?text=No+Image";
-                            }}
-                        />
-                    </div>
+
+  <span className={`book-status-badge ${book.SoLuongTon > 0 ? 'in-stock' : 'out-stock'}`}>
+    {book.SoLuongTon > 0 ? 'Còn sách' : 'Hết sách'}
+  </span>
+
+  <img 
+    src={book.AnhMinhHoa} 
+    alt={book.TenSach} 
+    className="book-detail-image"
+    onError={(e) => {
+      e.target.src = "https://via.placeholder.com/300x400.png?text=No+Image";
+    }}
+  />
+</div>
                     
                     <div className="book-info-section">
                         <div className="book-basic-info">

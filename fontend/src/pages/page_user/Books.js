@@ -188,12 +188,21 @@ export default function Books() {
               {currentBooks.map((book) => (
                 <div key={book.MaSach} className="books-card">
                   <div className="books-card-image-container">
-                    <img 
-                      src={book.AnhMinhHoa} alt={book.TenSach} className="books-card-image" 
-                      onError={(e) => e.target.src = "https://via.placeholder.com/150?text=No+Img"}
-                      onClick={() => handleViewDetail(book)}
-                    />
-                  </div>
+
+  {/* BADGE TRẠNG THÁI */}
+  <span className={`book-badge ${book.SoLuongCoSan > 0 ? "available" : "out"}`}>
+    {book.SoLuongCoSan > 0 ? "Còn sách" : "Hết"}
+  </span>
+
+  <img 
+    src={book.AnhMinhHoa}
+    alt={book.TenSach}
+    className="books-card-image" 
+    onError={(e) => e.target.src = "https://via.placeholder.com/150?text=No+Img"}
+    onClick={() => handleViewDetail(book)}
+  />
+
+</div>
                   
                   <div className="books-card-content">
                     <h4 className="books-card-title" onClick={() => handleViewDetail(book)}>{book.TenSach}</h4>
