@@ -1,6 +1,6 @@
 const sql = require('mssql');
 const config = require('../db/dbConfig');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { getUniqueId } = require('../utils/dbUtils');
@@ -405,13 +405,13 @@ exports.forgotPassword = async (req, res) => {
         const resetToken = crypto.randomBytes(32).toString('hex');
         const tokenExpires = new Date(Date.now() + 60 * 60 * 1000); 
         
-        request.input('MaTK', sql.VarChar, taiKhoan.MaTK);
+        request.input('MaTK', sql.VarChar, taiKhoan.MaTK.trim());
         request.input('Token', sql.VarChar, resetToken);
         request.input('Expires', sql.DateTime, tokenExpires);
         
         // 3. Xóa Token cũ & Lưu Token mới
-        await request.query('DELETE FROM ActivationToken WHERE MaTK = @MaTK');
-        await request.query('INSERT INTO ActivationToken (MaTK, Token, Expires) VALUES (@MaTK, @Token, @Expires)');
+        await request.query('DELETE FROM ResetToken WHERE MaTK = @MaTK');
+        await request.query('INSERT INTO ResetToken (MaTK, Token, Expires) VALUES (@MaTK, @Token, @Expires)');
 
         // 4. Gửi Email
         const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;

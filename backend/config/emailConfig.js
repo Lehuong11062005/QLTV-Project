@@ -1,6 +1,6 @@
 // backend/config/emailConfig.js
 const nodemailer = require('nodemailer');
-const sgTransport = require('nodemailer-sendgrid'); // Thư viện mới vừa cài
+const sgTransport = require('nodemailer-sendgrid'); 
 require('dotenv').config();
 
 // Kiểm tra xem đã có API Key chưa
