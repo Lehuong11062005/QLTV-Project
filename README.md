@@ -52,25 +52,43 @@ Công cụ: react-app-rewired để tối ưu hóa cấu hình build.
 📂 Cấu trúc thư mục
 Plaintext
 QLTV-Project/
+
 ├── backend/                # Mã nguồn máy chủ (API)
+
 │   ├── config/             # Cấu hình Cloudinary, Email
+
 │   ├── controllers/        # Xử lý logic nghiệp vụ
+
 │   ├── db/                 # Kết nối MSSQL & Scripts Migration
+
 │   ├── middleware/         # Kiểm tra quyền & Token
+
 │   ├── routes/             # Định nghĩa các endpoint API
+
 │   └── server.js           # Điểm khởi đầu của Backend
+
 ├── fontend/                # Mã nguồn giao diện (UI)
+
 │   ├── public/             # Tài sản tĩnh (index.html, icons)
+
 │   ├── src/
+
 │   │   ├── components/     # Các thành phần giao diện dùng chung
+
 │   │   ├── pages/          # Giao diện Admin và User riêng biệt
+
 │   │   ├── services/       # Gọi API (Auth, Book, Order...)
+
 │   │   └── routes.js       # Cấu hình định tuyến ứng dụng
+
 └── package.json            # Cấu hình chung của Root dự án
 
 
 
+
+
 🛠 Hướng dẫn cài đặt chi tiết
+
 Bước 1: Clone dự án
 
 git clone https://github.com/lehuong11062005/qltv-project.git
